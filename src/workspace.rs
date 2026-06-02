@@ -48,10 +48,8 @@ pub fn prepare_workspace(paths: &PatchbayPaths, issue: &GitHubIssue) -> Result<P
         warnings.push(
             "Workspace has local changes; Patchbay did not reset or overwrite it".to_string(),
         );
-    } else if let Err(error) = checkout_patchbay_branch(&workspace_path, &default_branch, &branch) {
-        warnings.push(format!(
-            "Unable to create or checkout Patchbay branch: {error}"
-        ));
+    } else {
+        checkout_patchbay_branch(&workspace_path, &default_branch, &branch)?;
     }
 
     let scan = scan_repository(&workspace_path, issue);

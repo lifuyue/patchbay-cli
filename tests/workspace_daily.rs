@@ -5,6 +5,7 @@ use std::process::Command;
 use chrono::Utc;
 use patchbay_cli::config::Config;
 use patchbay_cli::github::GitHubIssue;
+use patchbay_cli::handoff::handoff_id;
 use patchbay_cli::inbox::{load_index, InboxStatus};
 use patchbay_cli::paths::PatchbayPaths;
 use patchbay_cli::scoring::score_issue;
@@ -40,6 +41,28 @@ fn prepares_existing_local_git_workspace() {
         .validation_commands
         .iter()
         .any(|command| command.command == "cargo test"));
+}
+
+#[test]
+fn workspace_prepare_fails_when_patchbay_branch_cannot_be_created() {
+    if !git_available() {
+        return;
+    }
+
+    let dir = tempdir().unwrap();
+    let paths = test_paths(dir.path());
+    paths.ensure_layout().unwrap();
+    let remote = create_remote_repo(dir.path());
+    clone_into_workspace(&remote, &paths, "owner/conflict");
+
+    let workspace = paths.workspace_path_for("owner/conflict");
+    run_git(&workspace, &["checkout", "-b", "patchbay"]);
+    run_git(&workspace, &["checkout", "main"]);
+
+    let error = prepare_workspace(&paths, &issue("owner/conflict", 12))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("git checkout -b patchbay/12-fix-rust-cli-parser"));
 }
 
 #[tokio::test]
@@ -79,6 +102,43 @@ async fn daily_continues_after_single_prepare_failure() {
         .items
         .iter()
         .any(|item| item.status == InboxStatus::PrepareFailed));
+}
+
+#[tokio::test]
+async fn daily_continues_after_single_output_write_failure() {
+    if !git_available() {
+        return;
+    }
+
+    let dir = tempdir().unwrap();
+    let paths = test_paths(dir.path());
+    paths.ensure_layout().unwrap();
+    let remote = create_remote_repo(dir.path());
+    clone_into_workspace(&remote, &paths, "owner/failwrite");
+    clone_into_workspace(&remote, &paths, "owner/success");
+
+    let config = Config::default();
+    let failwrite = issue("owner/failwrite", 3);
+    let success = issue("owner/success", 4);
+    fs::write(
+        paths.inbox_item_dir(&handoff_id(&failwrite)),
+        "not a directory",
+    )
+    .unwrap();
+    let ranked = vec![
+        score_issue(failwrite, &config.profile),
+        score_issue(success, &config.profile),
+    ];
+
+    let (report, report_path) = workflow::daily_from_ranked(&paths, &config, ranked, 2, 2)
+        .await
+        .unwrap();
+
+    assert_eq!(report.prepared.len(), 1);
+    assert_eq!(report.failed.len(), 1);
+    assert!(fs::read_to_string(report_path)
+        .unwrap()
+        .contains("Failed preparation count: 1"));
 }
 
 fn test_paths(root: &Path) -> PatchbayPaths {

@@ -128,9 +128,22 @@ pub async fn daily_from_ranked(
         }
 
         attempts += 1;
-        match prepare_issue(paths, config, ranked_issue.issue).await? {
-            PrepareOutcome::Prepared(item) => report.prepared.push(item),
-            PrepareOutcome::Failed(item) => report.failed.push(item),
+        let issue = ranked_issue.issue;
+        match prepare_issue(paths, config, issue.clone()).await {
+            Ok(PrepareOutcome::Prepared(item)) => report.prepared.push(item),
+            Ok(PrepareOutcome::Failed(item)) => report.failed.push(item),
+            Err(error) => {
+                let reason = error.to_string();
+                let _ =
+                    inbox::upsert_prepare_failed(paths, &issue, ranked_issue.score, reason.clone());
+                report.failed.push(FailedReportItem {
+                    repo_full_name: issue.repo_full_name,
+                    issue_number: issue.number,
+                    title: issue.title,
+                    score: ranked_issue.score,
+                    reason,
+                });
+            }
         }
     }
 

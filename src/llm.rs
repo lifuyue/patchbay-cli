@@ -1,8 +1,12 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
 use crate::handoff::{Handoff, LlmEnhancement};
+
+const LLM_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Serialize)]
 struct ChatCompletionRequest {
@@ -61,6 +65,7 @@ async fn request_summary(config: &Config, handoff: &Handoff) -> Result<String> {
     let url = format!("{base_url}/chat/completions");
     let client = reqwest::Client::builder()
         .user_agent("patchbay-cli")
+        .timeout(LLM_REQUEST_TIMEOUT)
         .build()?;
 
     let prompt = format!(

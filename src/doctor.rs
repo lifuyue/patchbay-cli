@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -5,6 +7,8 @@ use crate::config::Config;
 use crate::github::GitHubClient;
 use crate::paths::PatchbayPaths;
 use crate::workspace::git_available;
+
+const DOCTOR_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DoctorCheck {
@@ -163,6 +167,7 @@ async fn check_llm_reachable(config: &Config, api_key: &str) -> Result<()> {
     let url = format!("{}/models", config.llm.base_url.trim_end_matches('/'));
     let response = reqwest::Client::builder()
         .user_agent("patchbay-cli")
+        .timeout(DOCTOR_HTTP_TIMEOUT)
         .build()?
         .get(url)
         .bearer_auth(api_key.trim())
