@@ -35,6 +35,8 @@ async fn scout_uses_mocked_github_search_responses() {
     assert_eq!(ranked[0].issue.repo_full_name, "owner/repo");
     assert_eq!(ranked[0].issue.number, 12);
     assert!(ranked[0].score > 0);
+    assert!(!ranked[0].value_assessment.signals.is_empty());
+    assert!(!ranked[0].value_assessment.explanation.is_empty());
 }
 
 fn start_mock_github() -> (String, thread::JoinHandle<()>) {
@@ -49,7 +51,7 @@ fn start_mock_github() -> (String, thread::JoinHandle<()>) {
         let started = Instant::now();
         let mut served = 0usize;
 
-        while served < 3 && started.elapsed() < Duration::from_secs(5) {
+        while served < 9 && started.elapsed() < Duration::from_secs(5) {
             match listener.accept() {
                 Ok((mut stream, _)) => {
                     let mut buffer = [0u8; 4096];
@@ -62,6 +64,14 @@ fn start_mock_github() -> (String, thread::JoinHandle<()>) {
                         } else {
                             "{\"items\":[]}".to_string()
                         }
+                    } else if request.starts_with("GET /repos/owner/repo/issues/12/comments") {
+                        comments_body()
+                    } else if request.starts_with("GET /repos/owner/repo/issues/12") {
+                        issue_body()
+                    } else if request.starts_with("GET /repos/owner/repo/stargazers") {
+                        stargazers_body()
+                    } else if request.starts_with("GET /repos/owner/repo/forks") {
+                        forks_body()
                     } else if request.starts_with("GET /repos/owner/repo") {
                         repo_body()
                     } else {
@@ -108,8 +118,58 @@ fn repo_body() -> String {
   "name": "repo",
   "description": "Rust CLI developer tools",
   "stargazers_count": 123,
+  "forks_count": 17,
+  "subscribers_count": 9,
+  "open_issues_count": 12,
+  "pushed_at": "2026-06-01T00:00:00Z",
+  "created_at": "2025-01-01T00:00:00Z",
+  "updated_at": "2026-06-01T00:00:00Z",
+  "default_branch": "main",
+  "topics": ["rust", "cli"],
+  "language": "Rust",
   "archived": false
 }"#
+    .to_string()
+}
+
+fn issue_body() -> String {
+    r#"{
+  "comments": 1,
+  "author_association": "CONTRIBUTOR",
+  "user": { "login": "issue-author" }
+}"#
+    .to_string()
+}
+
+fn comments_body() -> String {
+    r#"[
+  {
+    "body": "Maintainer note: this is a good first contribution.",
+    "author_association": "MEMBER",
+    "created_at": "2026-06-01T12:00:00Z",
+    "user": { "login": "maintainer" }
+  }
+]"#
+    .to_string()
+}
+
+fn stargazers_body() -> String {
+    r#"[
+  {
+    "starred_at": "2026-06-01T00:00:00Z",
+    "user": { "login": "star-user" }
+  }
+]"#
+    .to_string()
+}
+
+fn forks_body() -> String {
+    r#"[
+  {
+    "created_at": "2026-05-20T00:00:00Z",
+    "owner": { "login": "fork-user" }
+  }
+]"#
     .to_string()
 }
 

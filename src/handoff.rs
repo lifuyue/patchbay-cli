@@ -2,9 +2,12 @@ use anyhow::Result;
 use chrono::{Local, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::evidence_pack::EvidencePack;
 use crate::github::GitHubIssue;
+use crate::llm_review::LlmReview;
 use crate::paths::{atomic_write, sanitize_repo_name, PatchbayPaths};
 use crate::repo_scan::{CandidateFile, ValidationCommand};
+use crate::value_scoring::{GrowthConfidence, OpportunityType, Recommendation, ValueAssessment};
 use crate::workspace::PreparedWorkspace;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -16,8 +19,11 @@ pub struct Handoff {
     pub issue: HandoffIssue,
     pub workspace: HandoffWorkspace,
     pub context: HandoffContext,
+    pub value_assessment: ValueAssessment,
+    pub evidence_pack: EvidencePack,
     pub instructions: HandoffInstructions,
     pub llm_enhancement: LlmEnhancement,
+    pub llm_review: LlmReview,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -71,6 +77,22 @@ pub struct WrittenHandoff {
 
 impl Handoff {
     pub fn build(issue: &GitHubIssue, workspace: &PreparedWorkspace) -> Self {
+        Self::build_with_value(
+            issue,
+            workspace,
+            fallback_assessment(issue),
+            EvidencePack::empty(),
+            LlmReview::disabled(),
+        )
+    }
+
+    pub fn build_with_value(
+        issue: &GitHubIssue,
+        workspace: &PreparedWorkspace,
+        value_assessment: ValueAssessment,
+        evidence_pack: EvidencePack,
+        llm_review: LlmReview,
+    ) -> Self {
         let id = handoff_id(issue);
         let mut warnings = workspace.warnings.clone();
         warnings.extend(workspace.scan.warnings.clone());
@@ -102,8 +124,11 @@ impl Handoff {
                 validation_commands: workspace.scan.validation_commands.clone(),
                 warnings,
             },
+            value_assessment,
+            evidence_pack,
             instructions: HandoffInstructions::default(),
             llm_enhancement: LlmEnhancement::disabled(),
+            llm_review,
         }
     }
 
@@ -140,12 +165,58 @@ impl Handoff {
             format!("- Branch: {}", self.workspace.branch),
             format!("- Suggested files: {suggested_files}"),
             format!("- Suggested validation: {validation}"),
+            format!(
+                "- Value score: {} ({})",
+                self.value_assessment.value_score, self.value_assessment.recommendation
+            ),
+            format!(
+                "- Opportunity type: {}",
+                self.value_assessment.opportunity_type
+            ),
             String::new(),
             "## Goal".to_string(),
             String::new(),
             self.instructions.goal.clone(),
             String::new(),
         ];
+
+        if !self.evidence_pack.why_this_is_high_value.is_empty()
+            || !self.evidence_pack.why_this_is_actionable.is_empty()
+        {
+            lines.extend(["## Evidence".to_string(), String::new()]);
+            for item in &self.evidence_pack.why_this_is_high_value {
+                lines.push(format!(
+                    "- Value: {} ({})",
+                    item.summary,
+                    item.source_refs.join(", ")
+                ));
+            }
+            for item in &self.evidence_pack.why_this_is_actionable {
+                lines.push(format!(
+                    "- Actionable: {} ({})",
+                    item.summary,
+                    item.source_refs.join(", ")
+                ));
+            }
+            lines.push(String::new());
+        }
+
+        if !self.evidence_pack.risk_factors.is_empty()
+            || !self.evidence_pack.missing_evidence.is_empty()
+        {
+            lines.extend(["## Value Risks".to_string(), String::new()]);
+            for item in &self.evidence_pack.risk_factors {
+                lines.push(format!(
+                    "- {} ({})",
+                    item.summary,
+                    item.source_refs.join(", ")
+                ));
+            }
+            for item in &self.evidence_pack.missing_evidence {
+                lines.push(format!("- Missing evidence: {item}"));
+            }
+            lines.push(String::new());
+        }
 
         if let Some(summary) = &self.llm_enhancement.summary {
             lines.extend([
@@ -169,6 +240,23 @@ impl Handoff {
         }
 
         lines.join("\n")
+    }
+}
+
+fn fallback_assessment(issue: &GitHubIssue) -> ValueAssessment {
+    ValueAssessment {
+        value_score: 0,
+        execution_gate_score: 0,
+        recommendation: Recommendation::Avoid,
+        opportunity_type: OpportunityType::LowSignal,
+        growth_confidence: GrowthConfidence::Low,
+        signals: Vec::new(),
+        risks: Vec::new(),
+        missing_evidence: vec![format!(
+            "Value assessment was not generated for {}#{}",
+            issue.repo_full_name, issue.number
+        )],
+        explanation: Vec::new(),
     }
 }
 

@@ -117,9 +117,14 @@ async fn request_summary(config: &Config, handoff: &Handoff) -> Result<String> {
 mod tests {
     use super::enhance_handoff;
     use crate::config::Config;
+    use crate::evidence_pack::EvidencePack;
     use crate::handoff::{
         Handoff, HandoffContext, HandoffInstructions, HandoffIssue, HandoffWorkspace,
         LlmEnhancement,
+    };
+    use crate::llm_review::LlmReview;
+    use crate::value_scoring::{
+        GrowthConfidence, OpportunityType, Recommendation, ValueAssessment,
     };
 
     #[tokio::test]
@@ -150,8 +155,21 @@ mod tests {
                 validation_commands: vec![],
                 warnings: vec![],
             },
+            value_assessment: ValueAssessment {
+                value_score: 0,
+                execution_gate_score: 0,
+                recommendation: Recommendation::Avoid,
+                opportunity_type: OpportunityType::LowSignal,
+                growth_confidence: GrowthConfidence::Low,
+                signals: vec![],
+                risks: vec![],
+                missing_evidence: vec![],
+                explanation: vec![],
+            },
+            evidence_pack: EvidencePack::empty(),
             instructions: HandoffInstructions::default(),
             llm_enhancement: LlmEnhancement::success("old"),
+            llm_review: LlmReview::disabled(),
         };
 
         enhance_handoff(&config, &mut handoff).await;

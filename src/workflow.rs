@@ -3,14 +3,20 @@ use std::fs;
 use anyhow::{Context, Result};
 
 use crate::config::Config;
+use crate::evidence_pack::{build_evidence_pack, EvidencePack};
 use crate::github::{GitHubClient, GitHubIssue, IssueRef};
+use crate::github_enrichment::GitHubEnrichmentClient;
 use crate::handoff::{write_handoff, Handoff};
 use crate::inbox;
 use crate::llm;
+use crate::llm_review;
 use crate::paths::PatchbayPaths;
 use crate::report::{self, DailyReport, FailedReportItem, PreparedReportItem};
-use crate::scoring::{rank_issues, score_issue, RankedIssue};
+use crate::scoring::rank_issues;
+use crate::value_scoring::{assess_issue, RankedValueIssue, Recommendation, ValueAssessment};
 use crate::workspace;
+
+const ENRICHED_SCOUT_CANDIDATE_LIMIT: usize = 40;
 
 #[derive(Debug, Clone)]
 pub enum PrepareOutcome {
@@ -23,11 +29,15 @@ pub async fn scout(
     config: &Config,
     limit: usize,
     refresh: bool,
-) -> Result<Vec<RankedIssue>> {
+) -> Result<Vec<RankedValueIssue>> {
     paths.ensure_layout()?;
     let github = GitHubClient::new(config)?;
+    let enrichment = GitHubEnrichmentClient::new(config)?;
     let issues = github.discover_issues(paths, refresh).await?;
     let mut ranked = rank_issues(issues, &config.profile);
+    ranked.truncate(limit.clamp(25, ENRICHED_SCOUT_CANDIDATE_LIMIT));
+    let mut ranked = enrich_ranked_issues(paths, config, &enrichment, ranked, refresh).await;
+    sort_by_value(&mut ranked);
     ranked.truncate(limit);
     Ok(ranked)
 }
@@ -50,7 +60,9 @@ pub async fn prepare_from_input(
 
     let github = GitHubClient::new(config)?;
     let issue = github.fetch_issue(&reference).await?;
-    prepare_issue(paths, config, issue).await
+    let enrichment = GitHubEnrichmentClient::new(config)?;
+    let ranked = enrich_issue_for_value(paths, config, &enrichment, issue, false).await;
+    prepare_value_issue(paths, config, ranked, true).await
 }
 
 pub async fn prepare_issue(
@@ -58,22 +70,56 @@ pub async fn prepare_issue(
     config: &Config,
     issue: GitHubIssue,
 ) -> Result<PrepareOutcome> {
-    let ranked = score_issue(issue.clone(), &config.profile);
+    let enrichment = GitHubEnrichmentClient::new(config)?;
+    let ranked = enrich_issue_for_value(paths, config, &enrichment, issue, false).await;
+    prepare_value_issue(paths, config, ranked, true).await
+}
+
+pub async fn prepare_value_issue(
+    paths: &PatchbayPaths,
+    config: &Config,
+    ranked: RankedValueIssue,
+    explicit_prepare: bool,
+) -> Result<PrepareOutcome> {
+    let issue = ranked.issue.clone();
     match workspace::prepare_workspace(paths, &issue) {
         Ok(workspace) => {
-            let mut handoff = Handoff::build(&issue, &workspace);
+            let mut workspace = workspace;
+            if explicit_prepare && ranked.value_assessment.execution_gate_score < 40 {
+                workspace.warnings.push(format!(
+                    "Explicit prepare bypassed low execution gate score {}",
+                    ranked.value_assessment.execution_gate_score
+                ));
+            }
+            let evidence_pack = build_evidence_pack(
+                &ranked.value_assessment,
+                &ranked.enriched_issue,
+                Some(&workspace.scan),
+            );
+            let llm_review = llm_review::review_handoff(
+                config,
+                &issue,
+                &ranked.value_assessment,
+                &evidence_pack,
+            )
+            .await;
+            let mut handoff = Handoff::build_with_value(
+                &issue,
+                &workspace,
+                ranked.value_assessment.clone(),
+                evidence_pack.clone(),
+                llm_review,
+            );
             llm::enhance_handoff(config, &mut handoff).await;
             let written = write_handoff(paths, &handoff, &issue)?;
             inbox::upsert_ready(paths, &issue, ranked.score, &written)?;
-            Ok(PrepareOutcome::Prepared(PreparedReportItem {
-                id: written.id,
-                repo_full_name: issue.repo_full_name,
-                issue_number: issue.number,
-                title: issue.title,
-                score: ranked.score,
-                handoff_json_path: written.handoff_json_path,
-                handoff_md_path: written.handoff_md_path,
-            }))
+            Ok(PrepareOutcome::Prepared(prepared_report_item(
+                &ranked,
+                &evidence_pack,
+                written.id,
+                written.handoff_json_path,
+                written.handoff_md_path,
+            )))
         }
         Err(error) => {
             let reason = error.to_string();
@@ -98,9 +144,22 @@ pub async fn daily(
     paths.ensure_layout()?;
     let top_n = top.unwrap_or(config.daily.top_n).max(1);
     let github = GitHubClient::new(config)?;
+    let enrichment = GitHubEnrichmentClient::new(config)?;
     let issues = github.discover_issues(paths, refresh).await?;
     let discovery_count = issues.len();
     let ranked = rank_issues(issues, &config.profile);
+    let mut ranked = enrich_ranked_issues(
+        paths,
+        config,
+        &enrichment,
+        ranked
+            .into_iter()
+            .take(ENRICHED_SCOUT_CANDIDATE_LIMIT)
+            .collect(),
+        refresh,
+    )
+    .await;
+    sort_by_value(&mut ranked);
 
     daily_from_ranked(paths, config, ranked, discovery_count, top_n).await
 }
@@ -108,7 +167,7 @@ pub async fn daily(
 pub async fn daily_from_ranked(
     paths: &PatchbayPaths,
     config: &Config,
-    ranked: Vec<RankedIssue>,
+    ranked: Vec<RankedValueIssue>,
     discovery_count: usize,
     top_n: usize,
 ) -> Result<(DailyReport, String)> {
@@ -126,10 +185,15 @@ pub async fn daily_from_ranked(
         )? {
             continue;
         }
+        if ranked_issue.value_assessment.recommendation == Recommendation::Avoid
+            || ranked_issue.value_assessment.execution_gate_score < 40
+        {
+            continue;
+        }
 
         attempts += 1;
-        let issue = ranked_issue.issue;
-        match prepare_issue(paths, config, issue.clone()).await {
+        let issue = ranked_issue.issue.clone();
+        match prepare_value_issue(paths, config, ranked_issue.clone(), false).await {
             Ok(PrepareOutcome::Prepared(item)) => report.prepared.push(item),
             Ok(PrepareOutcome::Failed(item)) => report.failed.push(item),
             Err(error) => {
@@ -171,7 +235,7 @@ pub fn read_report(paths: &PatchbayPaths, date: Option<String>) -> Result<String
     fs::read_to_string(&path).with_context(|| format!("unable to read {}", path.display()))
 }
 
-pub fn render_ranked(ranked: &[RankedIssue]) -> String {
+pub fn render_ranked(ranked: &[RankedValueIssue]) -> String {
     if ranked.is_empty() {
         return "No issues found".to_string();
     }
@@ -180,15 +244,28 @@ pub fn render_ranked(ranked: &[RankedIssue]) -> String {
         .iter()
         .enumerate()
         .map(|(index, issue)| {
+            let detail = format!(
+                "{} | {} | gate {} | evidence: {} | risk: {}",
+                issue.value_assessment.recommendation,
+                issue.value_assessment.opportunity_type,
+                issue.value_assessment.execution_gate_score,
+                issue.explanation.join("; "),
+                issue
+                    .value_assessment
+                    .risks
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "none".to_string())
+            );
             format!(
                 "{}. {}#{} | score {} | {}\n   {}\n   {}",
                 index + 1,
                 issue.issue.repo_full_name,
                 issue.issue.number,
-                issue.score,
+                issue.value_assessment.value_score,
                 issue.issue.title,
                 issue.issue.url,
-                issue.explanation.join("; ")
+                detail
             )
         })
         .collect::<Vec<_>>()
@@ -214,4 +291,92 @@ pub fn render_daily(report: &DailyReport, path: &str) -> String {
         report.prepared.len(),
         report.failed.len()
     )
+}
+
+async fn enrich_ranked_issues(
+    paths: &PatchbayPaths,
+    config: &Config,
+    enrichment: &GitHubEnrichmentClient,
+    ranked: Vec<crate::scoring::RankedIssue>,
+    refresh: bool,
+) -> Vec<RankedValueIssue> {
+    let mut values = Vec::new();
+    for rough in ranked {
+        values.push(enrich_issue_for_value(paths, config, enrichment, rough.issue, refresh).await);
+    }
+    values
+}
+
+async fn enrich_issue_for_value(
+    paths: &PatchbayPaths,
+    config: &Config,
+    enrichment: &GitHubEnrichmentClient,
+    issue: GitHubIssue,
+    refresh: bool,
+) -> RankedValueIssue {
+    let enriched = enrichment.enrich_issue(paths, &issue, refresh).await;
+    let value_assessment = assess_issue(&enriched, &config.profile);
+    ranked_value_issue(issue, value_assessment, enriched)
+}
+
+fn ranked_value_issue(
+    issue: GitHubIssue,
+    value_assessment: ValueAssessment,
+    enriched_issue: crate::github_enrichment::EnrichedIssue,
+) -> RankedValueIssue {
+    let score = value_assessment.value_score;
+    let explanation = value_assessment.explanation.clone();
+    RankedValueIssue {
+        issue,
+        score,
+        value_assessment,
+        enriched_issue,
+        explanation,
+    }
+}
+
+fn sort_by_value(ranked: &mut [RankedValueIssue]) {
+    ranked.sort_by(|left, right| {
+        right
+            .value_assessment
+            .value_score
+            .cmp(&left.value_assessment.value_score)
+            .then_with(|| {
+                right
+                    .value_assessment
+                    .execution_gate_score
+                    .cmp(&left.value_assessment.execution_gate_score)
+            })
+    });
+}
+
+fn prepared_report_item(
+    ranked: &RankedValueIssue,
+    evidence_pack: &EvidencePack,
+    id: String,
+    handoff_json_path: String,
+    handoff_md_path: String,
+) -> PreparedReportItem {
+    PreparedReportItem {
+        id,
+        repo_full_name: ranked.issue.repo_full_name.clone(),
+        issue_number: ranked.issue.number,
+        title: ranked.issue.title.clone(),
+        score: ranked.score,
+        value_score: ranked.value_assessment.value_score,
+        opportunity_type: ranked.value_assessment.opportunity_type.to_string(),
+        why_it_is_worth_doing: evidence_pack
+            .why_this_is_high_value
+            .first()
+            .map(|item| item.summary.clone())
+            .unwrap_or_else(|| "Value evidence is limited".to_string()),
+        biggest_risk: evidence_pack
+            .risk_factors
+            .first()
+            .map(|item| item.summary.clone())
+            .unwrap_or_else(|| "none".to_string()),
+        missing_evidence: evidence_pack.missing_evidence.clone(),
+        handoff_json_path,
+        handoff_md_path,
+    }
 }
