@@ -1,0 +1,738 @@
+use std::fs;
+use std::time::Duration as StdDuration;
+
+use anyhow::{Context, Result};
+use chrono::{DateTime, Duration, Utc};
+use reqwest::StatusCode;
+use serde::{Deserialize, Serialize};
+
+use crate::config::Config;
+use crate::github::GitHubIssue;
+use crate::paths::{atomic_write, PatchbayPaths};
+
+const ENRICHMENT_CACHE_TTL_MINUTES: i64 = 45;
+const ENRICHMENT_HTTP_TIMEOUT: StdDuration = StdDuration::from_secs(10);
+const RECENT_STARGAZER_SAMPLE_LIMIT: usize = 100;
+const NEWEST_FORK_SAMPLE_LIMIT: usize = 100;
+const ISSUE_COMMENT_LIMIT: usize = 30;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EnrichedIssue {
+    pub issue: EnrichedIssueFacts,
+    pub repository: EnrichedRepositoryFacts,
+    pub activity: EnrichedActivityFacts,
+    pub participants: EnrichedParticipants,
+    pub comments: Vec<EnrichedComment>,
+    pub growth: EnrichedGrowthFacts,
+    pub warnings: Vec<String>,
+    pub source_fetched_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EnrichedIssueFacts {
+    pub title: String,
+    pub body: String,
+    pub labels: Vec<String>,
+    pub comments_count: u64,
+    pub updated_at: String,
+    pub created_at: String,
+    pub author_association: String,
+    pub url: String,
+    pub repo_full_name: String,
+    pub number: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EnrichedRepositoryFacts {
+    pub full_name: String,
+    pub name: String,
+    pub description: String,
+    pub stars: u64,
+    pub forks: u64,
+    pub subscribers: Option<u64>,
+    pub open_issues: Option<u64>,
+    pub pushed_at: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub default_branch: Option<String>,
+    pub archived: bool,
+    pub topics: Vec<String>,
+    pub language: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnrichedActivityFacts {
+    pub recent_issue_activity: bool,
+    pub recent_repo_activity: bool,
+    pub maintainer_recent_response: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnrichedParticipants {
+    pub issue_author: Option<String>,
+    pub commenters: Vec<String>,
+    pub maintainer_commenters: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnrichedComment {
+    pub source_ref: String,
+    pub author: Option<String>,
+    pub author_association: String,
+    pub created_at: String,
+    pub body_excerpt: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EnrichedGrowthFacts {
+    pub recent_stargazer_sample: Vec<TimestampedSample>,
+    pub newest_fork_sample: Vec<TimestampedSample>,
+    pub stargazer_sample_limit: usize,
+    pub fork_sample_limit: usize,
+    pub confidence_notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TimestampedSample {
+    pub source_ref: String,
+    pub actor: Option<String>,
+    pub timestamp: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepoApiResponse {
+    full_name: String,
+    name: String,
+    description: Option<String>,
+    stargazers_count: Option<u64>,
+    forks_count: Option<u64>,
+    subscribers_count: Option<u64>,
+    open_issues_count: Option<u64>,
+    pushed_at: Option<String>,
+    created_at: Option<String>,
+    updated_at: Option<String>,
+    default_branch: Option<String>,
+    archived: Option<bool>,
+    topics: Option<Vec<String>>,
+    language: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IssueApiResponse {
+    comments: Option<u64>,
+    author_association: Option<String>,
+    user: Option<UserApiResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommentApiResponse {
+    body: Option<String>,
+    author_association: Option<String>,
+    created_at: Option<String>,
+    user: Option<UserApiResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserApiResponse {
+    login: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum StargazerApiResponse {
+    StarredAt {
+        starred_at: Option<String>,
+        user: Option<UserApiResponse>,
+    },
+    User(UserApiResponse),
+}
+
+#[derive(Debug, Deserialize)]
+struct ForkApiResponse {
+    created_at: Option<String>,
+    owner: Option<UserApiResponse>,
+}
+
+pub struct GitHubEnrichmentClient {
+    http: reqwest::Client,
+    token: String,
+    api_base_url: String,
+}
+
+impl GitHubEnrichmentClient {
+    pub fn new(config: &Config) -> Result<Self> {
+        Self::with_api_base(
+            config,
+            std::env::var("PATCHBAY_GITHUB_API_BASE")
+                .unwrap_or_else(|_| "https://api.github.com".to_string()),
+        )
+    }
+
+    pub fn with_api_base(config: &Config, api_base_url: impl Into<String>) -> Result<Self> {
+        Ok(Self {
+            http: reqwest::Client::builder()
+                .user_agent("patchbay-cli")
+                .timeout(ENRICHMENT_HTTP_TIMEOUT)
+                .build()?,
+            token: config.github.token.clone(),
+            api_base_url: api_base_url.into(),
+        })
+    }
+
+    pub async fn enrich_issue(
+        &self,
+        paths: &PatchbayPaths,
+        issue: &GitHubIssue,
+        refresh: bool,
+    ) -> EnrichedIssue {
+        if !refresh {
+            if let Ok(Some(cached)) = load_cached_enrichment(paths, issue) {
+                return cached;
+            }
+        }
+
+        let mut enriched = EnrichedIssue::from_issue(issue);
+        let Some((owner, repo)) = split_repo_full_name(&issue.repo_full_name) else {
+            enriched
+                .warnings
+                .push("Unable to split repository full name for enrichment".to_string());
+            return enriched;
+        };
+
+        match self.fetch_repo(&owner, &repo).await {
+            Ok(repo_facts) => enriched.repository = repo_facts,
+            Err(error) => enriched
+                .warnings
+                .push(format!("Repository metadata enrichment failed: {error}")),
+        }
+
+        match self.fetch_issue_details(&owner, &repo, issue.number).await {
+            Ok(details) => {
+                enriched.issue.comments_count = details.comments.unwrap_or(0);
+                enriched.issue.author_association = details
+                    .author_association
+                    .unwrap_or_else(|| "unknown".to_string());
+                enriched.participants.issue_author = details.user.and_then(|user| user.login);
+            }
+            Err(error) => enriched
+                .warnings
+                .push(format!("Issue details enrichment failed: {error}")),
+        }
+
+        match self
+            .fetch_comments(&owner, &repo, issue.number, enriched.issue.comments_count)
+            .await
+        {
+            Ok(comments) => {
+                enriched.comments = comments;
+                enriched.participants.commenters = unique_nonempty(
+                    enriched
+                        .comments
+                        .iter()
+                        .filter_map(|comment| comment.author.clone())
+                        .collect(),
+                );
+                enriched.participants.maintainer_commenters = unique_nonempty(
+                    enriched
+                        .comments
+                        .iter()
+                        .filter(|comment| is_maintainer_association(&comment.author_association))
+                        .filter_map(|comment| comment.author.clone())
+                        .collect(),
+                );
+            }
+            Err(error) => enriched
+                .warnings
+                .push(format!("Issue comments enrichment failed: {error}")),
+        }
+
+        match self
+            .fetch_recent_stargazers(&owner, &repo, enriched.repository.stars)
+            .await
+        {
+            Ok(samples) => enriched.growth.recent_stargazer_sample = samples,
+            Err(error) => enriched
+                .warnings
+                .push(format!("Recent stargazer sample failed: {error}")),
+        }
+
+        match self.fetch_newest_forks(&owner, &repo).await {
+            Ok(samples) => enriched.growth.newest_fork_sample = samples,
+            Err(error) => enriched
+                .warnings
+                .push(format!("Newest fork sample failed: {error}")),
+        }
+
+        enriched.recompute_activity();
+        enriched.recompute_growth_notes();
+        let _ = save_cached_enrichment(paths, issue, &enriched);
+        enriched
+    }
+
+    async fn fetch_repo(&self, owner: &str, repo: &str) -> Result<EnrichedRepositoryFacts> {
+        let response = self
+            .authorized(
+                self.http
+                    .get(self.api_url(&format!("/repos/{owner}/{repo}"))),
+            )
+            .send()
+            .await?;
+        let repo = require_success(response)
+            .await?
+            .json::<RepoApiResponse>()
+            .await?;
+        Ok(EnrichedRepositoryFacts {
+            full_name: repo.full_name,
+            name: repo.name,
+            description: repo.description.unwrap_or_default(),
+            stars: repo.stargazers_count.unwrap_or_default(),
+            forks: repo.forks_count.unwrap_or_default(),
+            subscribers: repo.subscribers_count,
+            open_issues: repo.open_issues_count,
+            pushed_at: repo.pushed_at,
+            created_at: repo.created_at,
+            updated_at: repo.updated_at,
+            default_branch: repo.default_branch,
+            archived: repo.archived.unwrap_or(false),
+            topics: repo.topics.unwrap_or_default(),
+            language: repo.language,
+        })
+    }
+
+    async fn fetch_issue_details(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<IssueApiResponse> {
+        let response = self
+            .authorized(
+                self.http
+                    .get(self.api_url(&format!("/repos/{owner}/{repo}/issues/{number}"))),
+            )
+            .send()
+            .await?;
+        require_success(response)
+            .await?
+            .json::<IssueApiResponse>()
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn fetch_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        comments_count: u64,
+    ) -> Result<Vec<EnrichedComment>> {
+        let mut comments = Vec::new();
+        for page in trailing_sample_pages(comments_count, ISSUE_COMMENT_LIMIT) {
+            comments.extend(self.fetch_comments_page(owner, repo, number, page).await?);
+        }
+        let comments = tail_limited(comments, ISSUE_COMMENT_LIMIT);
+        Ok(comments
+            .into_iter()
+            .enumerate()
+            .map(|(index, comment)| EnrichedComment {
+                source_ref: format!("issue:comments.{index}"),
+                author: comment.user.and_then(|user| user.login),
+                author_association: comment
+                    .author_association
+                    .unwrap_or_else(|| "unknown".to_string()),
+                created_at: comment.created_at.unwrap_or_default(),
+                body_excerpt: excerpt(comment.body.unwrap_or_default(), 500),
+            })
+            .collect())
+    }
+
+    async fn fetch_comments_page(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        page: u64,
+    ) -> Result<Vec<CommentApiResponse>> {
+        let response = self
+            .authorized(
+                self.http
+                    .get(self.api_url(&format!("/repos/{owner}/{repo}/issues/{number}/comments")))
+                    .query(&[
+                        ("per_page", ISSUE_COMMENT_LIMIT.to_string()),
+                        ("page", page.to_string()),
+                    ]),
+            )
+            .send()
+            .await?;
+        require_success(response)
+            .await?
+            .json::<Vec<CommentApiResponse>>()
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn fetch_recent_stargazers(
+        &self,
+        owner: &str,
+        repo: &str,
+        stars: u64,
+    ) -> Result<Vec<TimestampedSample>> {
+        let mut stargazers = Vec::new();
+        for page in trailing_sample_pages(stars, RECENT_STARGAZER_SAMPLE_LIMIT) {
+            stargazers.extend(self.fetch_stargazer_page(owner, repo, page).await?);
+        }
+        let stargazers = tail_limited(stargazers, RECENT_STARGAZER_SAMPLE_LIMIT);
+        Ok(stargazers
+            .into_iter()
+            .enumerate()
+            .map(|(index, item)| match item {
+                StargazerApiResponse::StarredAt { starred_at, user } => TimestampedSample {
+                    source_ref: format!("repo:stargazers.sample_recent_100.{index}"),
+                    actor: user.and_then(|user| user.login),
+                    timestamp: starred_at,
+                },
+                StargazerApiResponse::User(user) => TimestampedSample {
+                    source_ref: format!("repo:stargazers.sample_recent_100.{index}"),
+                    actor: user.login,
+                    timestamp: None,
+                },
+            })
+            .collect())
+    }
+
+    async fn fetch_stargazer_page(
+        &self,
+        owner: &str,
+        repo: &str,
+        page: u64,
+    ) -> Result<Vec<StargazerApiResponse>> {
+        let response = self
+            .authorized(
+                self.http
+                    .get(self.api_url(&format!("/repos/{owner}/{repo}/stargazers")))
+                    .header("accept", "application/vnd.github.star+json")
+                    .query(&[
+                        ("per_page", RECENT_STARGAZER_SAMPLE_LIMIT.to_string()),
+                        ("page", page.to_string()),
+                    ]),
+            )
+            .send()
+            .await?;
+        require_success(response)
+            .await?
+            .json::<Vec<StargazerApiResponse>>()
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn fetch_newest_forks(&self, owner: &str, repo: &str) -> Result<Vec<TimestampedSample>> {
+        let response = self
+            .authorized(
+                self.http
+                    .get(self.api_url(&format!("/repos/{owner}/{repo}/forks")))
+                    .query(&[
+                        ("sort", "newest".to_string()),
+                        ("per_page", NEWEST_FORK_SAMPLE_LIMIT.to_string()),
+                    ]),
+            )
+            .send()
+            .await?;
+        let forks = require_success(response)
+            .await?
+            .json::<Vec<ForkApiResponse>>()
+            .await?;
+        Ok(forks
+            .into_iter()
+            .enumerate()
+            .map(|(index, item)| TimestampedSample {
+                source_ref: format!("repo:forks.sample_newest_100.{index}"),
+                actor: item.owner.and_then(|user| user.login),
+                timestamp: item.created_at,
+            })
+            .collect())
+    }
+
+    fn authorized(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if self.token.trim().is_empty() {
+            request
+        } else {
+            request.bearer_auth(self.token.trim())
+        }
+    }
+
+    fn api_url(&self, path: &str) -> String {
+        format!(
+            "{}/{}",
+            self.api_base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
+    }
+}
+
+impl EnrichedIssue {
+    pub fn from_issue(issue: &GitHubIssue) -> Self {
+        Self {
+            issue: EnrichedIssueFacts {
+                title: issue.title.clone(),
+                body: issue.body.clone(),
+                labels: issue.labels.clone(),
+                comments_count: 0,
+                updated_at: issue.updated_at.clone(),
+                created_at: issue.created_at.clone(),
+                author_association: "unknown".to_string(),
+                url: issue.url.clone(),
+                repo_full_name: issue.repo_full_name.clone(),
+                number: issue.number,
+            },
+            repository: EnrichedRepositoryFacts {
+                full_name: issue.repo_full_name.clone(),
+                name: issue.repo_name.clone(),
+                description: issue.repo_description.clone(),
+                stars: issue.repo_stars,
+                forks: 0,
+                subscribers: None,
+                open_issues: None,
+                pushed_at: None,
+                created_at: None,
+                updated_at: None,
+                default_branch: None,
+                archived: false,
+                topics: Vec::new(),
+                language: None,
+            },
+            activity: EnrichedActivityFacts {
+                recent_issue_activity: is_recent(&issue.updated_at, 14),
+                recent_repo_activity: false,
+                maintainer_recent_response: false,
+            },
+            participants: EnrichedParticipants {
+                issue_author: None,
+                commenters: Vec::new(),
+                maintainer_commenters: Vec::new(),
+            },
+            comments: Vec::new(),
+            growth: EnrichedGrowthFacts {
+                recent_stargazer_sample: Vec::new(),
+                newest_fork_sample: Vec::new(),
+                stargazer_sample_limit: RECENT_STARGAZER_SAMPLE_LIMIT,
+                fork_sample_limit: NEWEST_FORK_SAMPLE_LIMIT,
+                confidence_notes: vec!["Growth evidence is missing or not yet sampled".to_string()],
+            },
+            warnings: Vec::new(),
+            source_fetched_at: Utc::now().to_rfc3339(),
+        }
+    }
+
+    fn recompute_activity(&mut self) {
+        self.activity.recent_issue_activity = is_recent(&self.issue.updated_at, 14);
+        self.activity.recent_repo_activity = self
+            .repository
+            .pushed_at
+            .as_ref()
+            .map(|timestamp| is_recent(timestamp, 30))
+            .unwrap_or(false);
+        self.activity.maintainer_recent_response = self.comments.iter().any(|comment| {
+            is_maintainer_association(&comment.author_association)
+                && is_recent(&comment.created_at, 7)
+        });
+    }
+
+    fn recompute_growth_notes(&mut self) {
+        self.growth.confidence_notes.clear();
+        if self.growth.recent_stargazer_sample.is_empty() {
+            self.growth
+                .confidence_notes
+                .push("No recent stargazer sample was available".to_string());
+        } else if self
+            .growth
+            .recent_stargazer_sample
+            .iter()
+            .any(|sample| sample.timestamp.is_none())
+        {
+            self.growth.confidence_notes.push(
+                "Some stargazer sample entries did not include starred_at timestamps".to_string(),
+            );
+        }
+
+        if self.growth.newest_fork_sample.is_empty() {
+            self.growth
+                .confidence_notes
+                .push("No newest fork sample was available".to_string());
+        }
+
+        if self.growth.confidence_notes.is_empty() {
+            self.growth.confidence_notes.push(
+                "Growth momentum is approximate because GitHub samples are capped".to_string(),
+            );
+        }
+    }
+}
+
+pub fn star_velocity(sample: &[TimestampedSample], days: i64, now: DateTime<Utc>) -> usize {
+    sample
+        .iter()
+        .filter(|item| timestamp_within_days(item.timestamp.as_deref(), days, now))
+        .count()
+}
+
+pub fn fork_velocity(sample: &[TimestampedSample], days: i64, now: DateTime<Utc>) -> usize {
+    star_velocity(sample, days, now)
+}
+
+fn load_cached_enrichment(
+    paths: &PatchbayPaths,
+    issue: &GitHubIssue,
+) -> Result<Option<EnrichedIssue>> {
+    let path = paths.enrichment_cache_path(&issue.repo_full_name, issue.number);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw =
+        fs::read_to_string(&path).with_context(|| format!("unable to read {}", path.display()))?;
+    let enriched = serde_json::from_str::<EnrichedIssue>(&raw)?;
+    let fetched_at = DateTime::parse_from_rfc3339(&enriched.source_fetched_at)
+        .map(|value| value.with_timezone(&Utc))?;
+    if Utc::now() - fetched_at > Duration::minutes(ENRICHMENT_CACHE_TTL_MINUTES) {
+        return Ok(None);
+    }
+    Ok(Some(enriched))
+}
+
+fn save_cached_enrichment(
+    paths: &PatchbayPaths,
+    issue: &GitHubIssue,
+    enriched: &EnrichedIssue,
+) -> Result<()> {
+    atomic_write(
+        &paths.enrichment_cache_path(&issue.repo_full_name, issue.number),
+        serde_json::to_vec_pretty(enriched)?,
+    )
+}
+
+async fn require_success(response: reqwest::Response) -> Result<reqwest::Response> {
+    let status = response.status();
+    if status.is_success() {
+        return Ok(response);
+    }
+    let body = response.text().await.unwrap_or_default();
+    if status == StatusCode::FORBIDDEN || status == StatusCode::TOO_MANY_REQUESTS {
+        anyhow::bail!("GitHub rate limit or secondary throttle while enriching issue");
+    }
+    anyhow::bail!("GitHub enrichment request failed with {status}: {body}");
+}
+
+fn split_repo_full_name(repo_full_name: &str) -> Option<(String, String)> {
+    let (owner, repo) = repo_full_name.split_once('/')?;
+    Some((owner.to_string(), repo.to_string()))
+}
+
+fn trailing_sample_pages(total_count: u64, page_size: usize) -> Vec<u64> {
+    if total_count == 0 {
+        return vec![1];
+    }
+
+    let page_size = page_size as u64;
+    let last_page = ((total_count.saturating_sub(1)) / page_size) + 1;
+    let last_page_count = ((total_count.saturating_sub(1)) % page_size) + 1;
+    if last_page > 1 && last_page_count < page_size {
+        vec![last_page - 1, last_page]
+    } else {
+        vec![last_page]
+    }
+}
+
+fn tail_limited<T>(items: Vec<T>, limit: usize) -> Vec<T> {
+    let skip = items.len().saturating_sub(limit);
+    items.into_iter().skip(skip).collect()
+}
+
+fn timestamp_within_days(value: Option<&str>, days: i64, now: DateTime<Utc>) -> bool {
+    let Some(value) = value else {
+        return false;
+    };
+    DateTime::parse_from_rfc3339(value)
+        .map(|timestamp| now - timestamp.with_timezone(&Utc) <= Duration::days(days))
+        .unwrap_or(false)
+}
+
+fn is_recent(timestamp: &str, days: i64) -> bool {
+    timestamp_within_days(Some(timestamp), days, Utc::now())
+}
+
+fn is_maintainer_association(value: &str) -> bool {
+    matches!(
+        value.to_ascii_uppercase().as_str(),
+        "OWNER" | "MEMBER" | "COLLABORATOR"
+    )
+}
+
+fn unique_nonempty(values: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    values
+        .into_iter()
+        .filter(|value| !value.trim().is_empty())
+        .filter(|value| seen.insert(value.clone()))
+        .collect()
+}
+
+fn excerpt(value: String, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, Utc};
+
+    use super::{
+        fork_velocity, star_velocity, tail_limited, trailing_sample_pages, TimestampedSample,
+    };
+
+    fn sample(timestamp: &str) -> TimestampedSample {
+        TimestampedSample {
+            source_ref: "repo:stargazers.sample_recent_100.0".to_string(),
+            actor: Some("user".to_string()),
+            timestamp: Some(timestamp.to_string()),
+        }
+    }
+
+    #[test]
+    fn calculates_star_velocity_buckets() {
+        let now = Utc.with_ymd_and_hms(2026, 6, 2, 0, 0, 0).unwrap();
+        let samples = vec![
+            sample("2026-06-01T00:00:00Z"),
+            sample("2026-05-20T00:00:00Z"),
+            sample("2026-04-01T00:00:00Z"),
+        ];
+
+        assert_eq!(star_velocity(&samples, 7, now), 1);
+        assert_eq!(star_velocity(&samples, 14, now), 2);
+        assert_eq!(star_velocity(&samples, 30, now), 2);
+    }
+
+    #[test]
+    fn calculates_fork_velocity_proxy() {
+        let now = Utc.with_ymd_and_hms(2026, 6, 2, 0, 0, 0).unwrap();
+        let samples = vec![
+            sample("2026-05-15T00:00:00Z"),
+            sample("2026-04-01T00:00:00Z"),
+        ];
+        assert_eq!(fork_velocity(&samples, 30, now), 1);
+    }
+
+    #[test]
+    fn samples_previous_page_when_last_page_is_partial() {
+        assert_eq!(trailing_sample_pages(10_001, 100), vec![100, 101]);
+        assert_eq!(trailing_sample_pages(10_000, 100), vec![100]);
+        assert_eq!(trailing_sample_pages(31, 30), vec![1, 2]);
+        assert_eq!(trailing_sample_pages(30, 30), vec![1]);
+    }
+
+    #[test]
+    fn keeps_tail_entries_after_multi_page_sample() {
+        let values = (0..101).collect::<Vec<_>>();
+        let tail = tail_limited(values, 100);
+        assert_eq!(tail.len(), 100);
+        assert_eq!(tail[0], 1);
+        assert_eq!(tail[99], 100);
+    }
+}

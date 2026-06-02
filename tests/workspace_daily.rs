@@ -1,15 +1,22 @@
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use patchbay_cli::config::Config;
 use patchbay_cli::github::GitHubIssue;
+use patchbay_cli::github_enrichment::EnrichedIssue;
 use patchbay_cli::handoff::handoff_id;
 use patchbay_cli::inbox::{load_index, InboxStatus};
 use patchbay_cli::paths::PatchbayPaths;
-use patchbay_cli::scoring::score_issue;
-use patchbay_cli::workflow;
+use patchbay_cli::value_scoring::{
+    GrowthConfidence, OpportunityType, RankedValueIssue, Recommendation, ValueAssessment,
+};
+use patchbay_cli::workflow::{self, prepare_value_issue};
 use patchbay_cli::workspace::{git_available, prepare_workspace};
 use tempfile::tempdir;
 
@@ -81,10 +88,7 @@ async fn daily_continues_after_single_prepare_failure() {
     let config = Config::default();
     let success = issue("owner/success", 1);
     let failure = issue("owner/fail", 2);
-    let ranked = vec![
-        score_issue(success, &config.profile),
-        score_issue(failure, &config.profile),
-    ];
+    let ranked = vec![ranked_value(success, 72, 60), ranked_value(failure, 68, 55)];
 
     let (report, _) = workflow::daily_from_ranked(&paths, &config, ranked, 2, 2)
         .await
@@ -102,6 +106,30 @@ async fn daily_continues_after_single_prepare_failure() {
         .items
         .iter()
         .any(|item| item.status == InboxStatus::PrepareFailed));
+}
+
+#[tokio::test]
+async fn daily_skips_low_execution_gate_candidates() {
+    if !git_available() {
+        return;
+    }
+
+    let dir = tempdir().unwrap();
+    let paths = test_paths(dir.path());
+    paths.ensure_layout().unwrap();
+    let remote = create_remote_repo(dir.path());
+    clone_into_workspace(&remote, &paths, "owner/lowgate");
+    clone_into_workspace(&remote, &paths, "owner/success");
+
+    let config = Config::default();
+    let low_gate = ranked_value(issue("owner/lowgate", 5), 95, 20);
+    let success = ranked_value(issue("owner/success", 6), 70, 55);
+    let (report, _) = workflow::daily_from_ranked(&paths, &config, vec![low_gate, success], 2, 1)
+        .await
+        .unwrap();
+
+    assert_eq!(report.prepared.len(), 1);
+    assert_eq!(report.prepared[0].repo_full_name, "owner/success");
 }
 
 #[tokio::test]
@@ -126,8 +154,8 @@ async fn daily_continues_after_single_output_write_failure() {
     )
     .unwrap();
     let ranked = vec![
-        score_issue(failwrite, &config.profile),
-        score_issue(success, &config.profile),
+        ranked_value(failwrite, 70, 55),
+        ranked_value(success, 69, 55),
     ];
 
     let (report, report_path) = workflow::daily_from_ranked(&paths, &config, ranked, 2, 2)
@@ -139,6 +167,68 @@ async fn daily_continues_after_single_output_write_failure() {
     assert!(fs::read_to_string(report_path)
         .unwrap()
         .contains("Failed preparation count: 1"));
+}
+
+#[tokio::test]
+async fn explicit_prepare_writes_low_gate_warning_and_value_fields() {
+    if !git_available() {
+        return;
+    }
+
+    let dir = tempdir().unwrap();
+    let paths = test_paths(dir.path());
+    paths.ensure_layout().unwrap();
+    let remote = create_remote_repo(dir.path());
+    clone_into_workspace(&remote, &paths, "owner/explicit");
+
+    let config = Config::default();
+    let ranked = ranked_value(issue("owner/explicit", 7), 80, 20);
+    let outcome = prepare_value_issue(&paths, &config, ranked, true)
+        .await
+        .unwrap();
+    let workflow::PrepareOutcome::Prepared(item) = outcome else {
+        panic!("expected prepared outcome");
+    };
+
+    let handoff = fs::read_to_string(item.handoff_json_path).unwrap();
+    assert!(handoff.contains("\"value_assessment\""));
+    assert!(handoff.contains("\"evidence_pack\""));
+    assert!(handoff.contains("Explicit prepare bypassed low execution gate score 20"));
+}
+
+#[tokio::test]
+async fn prepare_preserves_llm_summary_enhancement() {
+    if !git_available() {
+        return;
+    }
+
+    let (base_url, handle) = start_llm_server();
+    let dir = tempdir().unwrap();
+    let paths = test_paths(dir.path());
+    paths.ensure_layout().unwrap();
+    let remote = create_remote_repo(dir.path());
+    clone_into_workspace(&remote, &paths, "owner/llm");
+
+    let mut config = Config::default();
+    config.llm.enabled = true;
+    config.llm.base_url = base_url;
+    config.llm.api_key = "test-key".to_string();
+    let ranked = ranked_value(issue("owner/llm", 8), 80, 60);
+
+    let outcome = prepare_value_issue(&paths, &config, ranked, true)
+        .await
+        .unwrap();
+    handle.join().unwrap();
+    let workflow::PrepareOutcome::Prepared(item) = outcome else {
+        panic!("expected prepared outcome");
+    };
+
+    let handoff = fs::read_to_string(item.handoff_json_path).unwrap();
+    assert!(handoff.contains("\"llm_enhancement\""));
+    assert!(handoff.contains("\"status\": \"success\""));
+    let markdown = fs::read_to_string(item.handoff_md_path).unwrap();
+    assert!(markdown.contains("## LLM Summary"));
+    assert!(markdown.contains("Mock LLM summary"));
 }
 
 fn test_paths(root: &Path) -> PatchbayPaths {
@@ -166,6 +256,38 @@ fn issue(repo_full_name: &str, number: u64) -> GitHubIssue {
         repo_stars: 10,
         created_at: Utc::now().to_rfc3339(),
         updated_at: Utc::now().to_rfc3339(),
+    }
+}
+
+fn ranked_value(
+    issue: GitHubIssue,
+    value_score: i32,
+    execution_gate_score: i32,
+) -> RankedValueIssue {
+    let enriched_issue = EnrichedIssue::from_issue(&issue);
+    let recommendation = if execution_gate_score < 40 {
+        Recommendation::WeakCandidate
+    } else if value_score >= 75 {
+        Recommendation::StrongCandidate
+    } else {
+        Recommendation::Candidate
+    };
+    RankedValueIssue {
+        issue,
+        score: value_score,
+        value_assessment: ValueAssessment {
+            value_score,
+            execution_gate_score,
+            recommendation,
+            opportunity_type: OpportunityType::NicheButActionable,
+            growth_confidence: GrowthConfidence::Low,
+            signals: Vec::new(),
+            risks: Vec::new(),
+            missing_evidence: Vec::new(),
+            explanation: vec!["test value evidence".to_string()],
+        },
+        enriched_issue,
+        explanation: vec!["test value evidence".to_string()],
     }
 }
 
@@ -230,6 +352,37 @@ fn clone_into_workspace(remote: &Path, paths: &PatchbayPaths, repo_full_name: &s
             workspace.file_name().unwrap().to_str().unwrap(),
         ],
     );
+}
+
+fn start_llm_server() -> (String, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let handle = thread::spawn(move || {
+        let started = Instant::now();
+        let mut served = 0usize;
+        while served < 2 && started.elapsed() < Duration::from_secs(5) {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let mut buffer = [0u8; 4096];
+                    let _ = stream.read(&mut buffer).unwrap_or(0);
+                    let body = r#"{"choices":[{"message":{"content":"Mock LLM summary"}}]}"#;
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    stream.write_all(response.as_bytes()).unwrap();
+                    served += 1;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    (base_url, handle)
 }
 
 fn run_git(cwd: &Path, args: &[&str]) {

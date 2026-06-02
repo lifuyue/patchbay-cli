@@ -45,6 +45,18 @@ impl PatchbayPaths {
         self.cache_dir.join("github-issues.json")
     }
 
+    pub fn enrichment_cache_dir(&self) -> PathBuf {
+        self.cache_dir.join("enrichment")
+    }
+
+    pub fn enrichment_cache_path(&self, repo_full_name: &str, issue_number: u64) -> PathBuf {
+        self.enrichment_cache_dir().join(format!(
+            "{}__{}.json",
+            sanitize_repo_name(repo_full_name),
+            issue_number
+        ))
+    }
+
     pub fn inbox_index_path(&self) -> PathBuf {
         self.inbox_dir.join("index.json")
     }

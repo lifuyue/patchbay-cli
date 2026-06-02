@@ -1,4 +1,6 @@
 /reference/
+/.agents/
+/skills-lock.json
 
 # Local environment
 .env

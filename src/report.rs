@@ -19,6 +19,11 @@ pub struct PreparedReportItem {
     pub issue_number: u64,
     pub title: String,
     pub score: i32,
+    pub value_score: i32,
+    pub opportunity_type: String,
+    pub why_it_is_worth_doing: String,
+    pub biggest_risk: String,
+    pub missing_evidence: Vec<String>,
     pub handoff_json_path: String,
     pub handoff_md_path: String,
 }
@@ -54,8 +59,12 @@ impl DailyReport {
         } else {
             for item in self.prepared.iter().take(3) {
                 lines.push(format!(
-                    "- {}#{} | score {} | {}",
-                    item.repo_full_name, item.issue_number, item.score, item.title
+                    "- {}#{} | value {} | {} | {}",
+                    item.repo_full_name,
+                    item.issue_number,
+                    item.value_score,
+                    item.opportunity_type,
+                    item.why_it_is_worth_doing
                 ));
             }
         }
@@ -70,11 +79,18 @@ impl DailyReport {
         } else {
             for item in &self.prepared {
                 lines.push(format!(
-                    "- [{}] {}#{} | score {} | JSON: {} | Markdown: {}",
+                    "- [{}] {}#{} | value {} | type {} | risk: {} | missing: {} | JSON: {} | Markdown: {}",
                     item.id,
                     item.repo_full_name,
                     item.issue_number,
-                    item.score,
+                    item.value_score,
+                    item.opportunity_type,
+                    item.biggest_risk,
+                    if item.missing_evidence.is_empty() {
+                        "none".to_string()
+                    } else {
+                        item.missing_evidence.join("; ")
+                    },
                     item.handoff_json_path,
                     item.handoff_md_path
                 ));
@@ -135,6 +151,11 @@ mod tests {
                 issue_number: 1,
                 title: "Issue".to_string(),
                 score: 90,
+                value_score: 90,
+                opportunity_type: "balanced".to_string(),
+                why_it_is_worth_doing: "High value evidence".to_string(),
+                biggest_risk: "none".to_string(),
+                missing_evidence: Vec::new(),
                 handoff_json_path: "/tmp/handoff.json".to_string(),
                 handoff_md_path: "/tmp/handoff.md".to_string(),
             }],
