@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod config;
+pub mod context_pack;
 pub mod doctor;
 pub mod errors;
 pub mod evidence_pack;

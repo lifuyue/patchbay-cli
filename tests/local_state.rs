@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use chrono::Utc;
 use patchbay_cli::github::GitHubIssue;
 use patchbay_cli::handoff::{write_handoff, Handoff};
@@ -65,9 +67,50 @@ fn writes_handoff_inbox_and_report_under_patchbay_home() {
     let written = write_handoff(&paths, &handoff, &issue).unwrap();
     upsert_ready(&paths, &issue, 88, &written).unwrap();
 
+    let item_dir = PathBuf::from(&written.dir);
+    let handoff_json = std::fs::read_to_string(&written.handoff_json_path).unwrap();
+    let handoff_value = serde_json::from_str::<serde_json::Value>(&handoff_json).unwrap();
+    assert_eq!(handoff_value["version"], 1);
+    assert_eq!(handoff_value["context_pack"]["version"], 1);
+    assert_eq!(
+        handoff_value["context_pack"]["kind"],
+        "patchbay_progressive_handoff_pack"
+    );
+    assert_eq!(handoff_value["context_pack"]["entrypoint"], "./codex.md");
+    assert!(handoff_value["context_pack"]["body"].is_null());
+
+    let codex = std::fs::read_to_string(&written.codex_md_path).unwrap();
+    assert!(codex.contains("Use the local skill at:"));
+    assert!(codex.contains(item_dir.to_string_lossy().as_ref()));
+    assert!(codex.contains("/context/entry.md"));
+    assert!(codex.contains("/context/safety.md"));
+    assert!(codex.contains("Do not read every context file at once"));
+
+    let entry = std::fs::read_to_string(item_dir.join("context/entry.md")).unwrap();
+    assert!(entry.contains("## Next Reads"));
+    assert!(!entry.contains("Expected a useful label in src/button.rs"));
+    let value = std::fs::read_to_string(item_dir.join("context/value.md")).unwrap();
+    assert!(value.contains("## Evidence Pack: High Value"));
+    let repo = std::fs::read_to_string(item_dir.join("context/repo.md")).unwrap();
+    assert!(repo.contains("src/button.rs"));
+    let validation = std::fs::read_to_string(item_dir.join("context/validation.md")).unwrap();
+    assert!(validation.contains("`cargo test`"));
+    let safety = std::fs::read_to_string(item_dir.join("context/safety.md")).unwrap();
+    assert!(safety.contains("Patchbay does not install dependencies, commit, push, or create PRs"));
+    let skill =
+        std::fs::read_to_string(item_dir.join(".agents/skills/patchbay-cli/SKILL.md")).unwrap();
+    assert!(skill.starts_with("# patchbay-cli"));
+    assert!(skill.contains("Read context/entry.md and context/safety.md first"));
+    let refs =
+        std::fs::read_to_string(item_dir.join(".agents/skills/patchbay-cli/refs.json")).unwrap();
+    let refs = serde_json::from_str::<serde_json::Value>(&refs).unwrap();
+    assert_eq!(refs["skill"], "patchbay-cli");
+    assert_eq!(refs["default_load"][0], "context/entry.md");
+
     let index = load_index(&paths).unwrap();
     assert_eq!(index.items.len(), 1);
     assert_eq!(index.items[0].status, InboxStatus::Ready);
+    assert_eq!(index.items[0].codex_md_path, written.codex_md_path);
     assert!(workflow::read_handoff(&paths, &written.id, true)
         .unwrap()
         .contains("\"kind\": \"patchbay_handoff\""));
@@ -91,11 +134,12 @@ fn writes_handoff_inbox_and_report_under_patchbay_home() {
             missing_evidence: Vec::new(),
             handoff_json_path: written.handoff_json_path,
             handoff_md_path: written.handoff_md_path,
+            codex_md_path: written.codex_md_path,
         }],
         failed: Vec::new(),
     };
     let report_path = write_daily_report(&paths, &report).unwrap();
     assert!(std::fs::read_to_string(report_path)
         .unwrap()
-        .contains("Prepared handoff count: 1"));
+        .contains("Codex: "));
 }

@@ -26,6 +26,8 @@ pub struct PreparedReportItem {
     pub missing_evidence: Vec<String>,
     pub handoff_json_path: String,
     pub handoff_md_path: String,
+    #[serde(default)]
+    pub codex_md_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -79,7 +81,7 @@ impl DailyReport {
         } else {
             for item in &self.prepared {
                 lines.push(format!(
-                    "- [{}] {}#{} | value {} | type {} | risk: {} | missing: {} | JSON: {} | Markdown: {}",
+                    "- [{}] {}#{} | value {} | type {} | risk: {} | missing: {} | JSON: {} | Markdown: {} | Codex: {}",
                     item.id,
                     item.repo_full_name,
                     item.issue_number,
@@ -92,7 +94,8 @@ impl DailyReport {
                         item.missing_evidence.join("; ")
                     },
                     item.handoff_json_path,
-                    item.handoff_md_path
+                    item.handoff_md_path,
+                    item.codex_md_path
                 ));
             }
         }
@@ -158,6 +161,7 @@ mod tests {
                 missing_evidence: Vec::new(),
                 handoff_json_path: "/tmp/handoff.json".to_string(),
                 handoff_md_path: "/tmp/handoff.md".to_string(),
+                codex_md_path: "/tmp/codex.md".to_string(),
             }],
             failed: Vec::new(),
         };

@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::{Local, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::context_pack::{default_context_pack, write_context_pack, ContextPack};
 use crate::evidence_pack::EvidencePack;
 use crate::github::GitHubIssue;
 use crate::llm_review::LlmReview;
@@ -19,6 +20,8 @@ pub struct Handoff {
     pub issue: HandoffIssue,
     pub workspace: HandoffWorkspace,
     pub context: HandoffContext,
+    #[serde(default = "default_context_pack")]
+    pub context_pack: ContextPack,
     pub value_assessment: ValueAssessment,
     pub evidence_pack: EvidencePack,
     pub instructions: HandoffInstructions,
@@ -73,6 +76,7 @@ pub struct WrittenHandoff {
     pub dir: String,
     pub handoff_json_path: String,
     pub handoff_md_path: String,
+    pub codex_md_path: String,
 }
 
 impl Handoff {
@@ -124,6 +128,7 @@ impl Handoff {
                 validation_commands: workspace.scan.validation_commands.clone(),
                 warnings,
             },
+            context_pack: default_context_pack(),
             value_assessment,
             evidence_pack,
             instructions: HandoffInstructions::default(),
@@ -338,12 +343,14 @@ pub fn write_handoff(
     )?;
     atomic_write(&handoff_json_path, serde_json::to_vec_pretty(handoff)?)?;
     atomic_write(&handoff_md_path, handoff.render_markdown())?;
+    let written_pack = write_context_pack(&dir, handoff, issue)?;
 
     Ok(WrittenHandoff {
         id: handoff.id.clone(),
         dir: dir.to_string_lossy().to_string(),
         handoff_json_path: handoff_json_path.to_string_lossy().to_string(),
         handoff_md_path: handoff_md_path.to_string_lossy().to_string(),
+        codex_md_path: written_pack.codex_md_path,
     })
 }
 
@@ -397,6 +404,11 @@ mod tests {
         let handoff = Handoff::build(&issue, &workspace);
         assert_eq!(handoff.version, 1);
         assert_eq!(handoff.kind, "patchbay_handoff");
+        assert_eq!(handoff.context_pack.version, 1);
+        assert_eq!(
+            handoff.context_pack.kind,
+            "patchbay_progressive_handoff_pack"
+        );
         assert_eq!(handoff.context.candidate_files[0].path, "src/button.rs");
         assert!(handoff
             .render_markdown()
