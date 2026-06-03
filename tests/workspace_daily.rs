@@ -96,6 +96,7 @@ async fn daily_continues_after_single_prepare_failure() {
 
     assert_eq!(report.prepared.len(), 1);
     assert_eq!(report.failed.len(), 1);
+    assert!(PathBuf::from(&report.prepared[0].codex_md_path).exists());
 
     let index = load_index(&paths).unwrap();
     assert!(index
@@ -193,7 +194,12 @@ async fn explicit_prepare_writes_low_gate_warning_and_value_fields() {
     let handoff = fs::read_to_string(item.handoff_json_path).unwrap();
     assert!(handoff.contains("\"value_assessment\""));
     assert!(handoff.contains("\"evidence_pack\""));
+    assert!(handoff.contains("\"context_pack\""));
     assert!(handoff.contains("Explicit prepare bypassed low execution gate score 20"));
+    let codex = fs::read_to_string(item.codex_md_path).unwrap();
+    assert!(codex.contains("Use the local skill at:"));
+    assert!(codex.contains("context/entry.md"));
+    assert!(codex.contains("context/safety.md"));
 }
 
 #[tokio::test]

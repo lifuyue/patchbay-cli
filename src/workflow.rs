@@ -119,6 +119,7 @@ pub async fn prepare_value_issue(
                 written.id,
                 written.handoff_json_path,
                 written.handoff_md_path,
+                written.codex_md_path,
             )))
         }
         Err(error) => {
@@ -275,8 +276,8 @@ pub fn render_ranked(ranked: &[RankedValueIssue]) -> String {
 pub fn render_prepare_outcome(outcome: &PrepareOutcome) -> String {
     match outcome {
         PrepareOutcome::Prepared(item) => format!(
-            "Prepared {}\nJSON: {}\nMarkdown: {}",
-            item.id, item.handoff_json_path, item.handoff_md_path
+            "Prepared {}\nJSON: {}\nMarkdown: {}\nCodex: {}",
+            item.id, item.handoff_json_path, item.handoff_md_path, item.codex_md_path
         ),
         PrepareOutcome::Failed(item) => format!(
             "Preparation failed for {}#{}\nReason: {}",
@@ -356,6 +357,7 @@ fn prepared_report_item(
     id: String,
     handoff_json_path: String,
     handoff_md_path: String,
+    codex_md_path: String,
 ) -> PreparedReportItem {
     PreparedReportItem {
         id,
@@ -378,5 +380,6 @@ fn prepared_report_item(
         missing_evidence: evidence_pack.missing_evidence.clone(),
         handoff_json_path,
         handoff_md_path,
+        codex_md_path,
     }
 }

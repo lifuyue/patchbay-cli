@@ -24,6 +24,8 @@ pub struct InboxItem {
     pub status: InboxStatus,
     pub handoff_json_path: String,
     pub handoff_md_path: String,
+    #[serde(default)]
+    pub codex_md_path: String,
     pub created_at: String,
     pub failure_reason: Option<String>,
 }
@@ -80,6 +82,7 @@ pub fn upsert_ready(
         status: InboxStatus::Ready,
         handoff_json_path: written.handoff_json_path.clone(),
         handoff_md_path: written.handoff_md_path.clone(),
+        codex_md_path: written.codex_md_path.clone(),
         created_at: Utc::now().to_rfc3339(),
         failure_reason: None,
     };
@@ -107,6 +110,7 @@ pub fn upsert_prepare_failed(
         status: InboxStatus::PrepareFailed,
         handoff_json_path: String::new(),
         handoff_md_path: String::new(),
+        codex_md_path: String::new(),
         created_at: Utc::now().to_rfc3339(),
         failure_reason: Some(reason.into()),
     };
@@ -221,6 +225,7 @@ mod tests {
             dir: String::new(),
             handoff_json_path: "/tmp/handoff.json".to_string(),
             handoff_md_path: "/tmp/handoff.md".to_string(),
+            codex_md_path: "/tmp/codex.md".to_string(),
         };
 
         upsert_ready(&paths, &issue, 80, &written).unwrap();

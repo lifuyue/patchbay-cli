@@ -117,6 +117,7 @@ async fn request_summary(config: &Config, handoff: &Handoff) -> Result<String> {
 mod tests {
     use super::enhance_handoff;
     use crate::config::Config;
+    use crate::context_pack::default_context_pack;
     use crate::evidence_pack::EvidencePack;
     use crate::handoff::{
         Handoff, HandoffContext, HandoffInstructions, HandoffIssue, HandoffWorkspace,
@@ -155,6 +156,7 @@ mod tests {
                 validation_commands: vec![],
                 warnings: vec![],
             },
+            context_pack: default_context_pack(),
             value_assessment: ValueAssessment {
                 value_score: 0,
                 execution_gate_score: 0,
