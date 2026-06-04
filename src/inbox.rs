@@ -4,10 +4,10 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::errors::PatchbayError;
+use crate::errors::IssueFinderError;
 use crate::github::GitHubIssue;
 use crate::handoff::WrittenHandoff;
-use crate::paths::{atomic_write, PatchbayPaths};
+use crate::paths::{atomic_write, IssueFinderPaths};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InboxIndex {
@@ -56,7 +56,7 @@ impl InboxStatus {
     }
 }
 
-pub fn load_index(paths: &PatchbayPaths) -> Result<InboxIndex> {
+pub fn load_index(paths: &IssueFinderPaths) -> Result<InboxIndex> {
     let path = paths.inbox_index_path();
     if !path.exists() {
         return Ok(InboxIndex::default());
@@ -68,13 +68,13 @@ pub fn load_index(paths: &PatchbayPaths) -> Result<InboxIndex> {
     Ok(index)
 }
 
-pub fn save_index(paths: &PatchbayPaths, index: &InboxIndex) -> Result<()> {
+pub fn save_index(paths: &IssueFinderPaths, index: &InboxIndex) -> Result<()> {
     atomic_write(&paths.inbox_index_path(), serde_json::to_vec_pretty(index)?)?;
     Ok(())
 }
 
 pub fn upsert_ready(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     issue: &GitHubIssue,
     score: i32,
     written: &WrittenHandoff,
@@ -99,7 +99,7 @@ pub fn upsert_ready(
 }
 
 pub fn upsert_prepare_failed(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     issue: &GitHubIssue,
     score: i32,
     reason: impl Into<String>,
@@ -129,26 +129,30 @@ pub fn upsert_prepare_failed(
     upsert_item(paths, item)
 }
 
-pub fn update_status(paths: &PatchbayPaths, id: &str, status: InboxStatus) -> Result<InboxIndex> {
+pub fn update_status(
+    paths: &IssueFinderPaths,
+    id: &str,
+    status: InboxStatus,
+) -> Result<InboxIndex> {
     let mut index = load_index(paths)?;
     let Some(item) = index.items.iter_mut().find(|item| item.id == id) else {
-        return Err(PatchbayError::InboxItemNotFound(id.to_string()).into());
+        return Err(IssueFinderError::InboxItemNotFound(id.to_string()).into());
     };
     item.status = status;
     save_index(paths, &index)?;
     Ok(index)
 }
 
-pub fn find_item(paths: &PatchbayPaths, id: &str) -> Result<InboxItem> {
+pub fn find_item(paths: &IssueFinderPaths, id: &str) -> Result<InboxItem> {
     load_index(paths)?
         .items
         .into_iter()
         .find(|item| item.id == id)
-        .ok_or_else(|| PatchbayError::InboxItemNotFound(id.to_string()).into())
+        .ok_or_else(|| IssueFinderError::InboxItemNotFound(id.to_string()).into())
 }
 
 pub fn contains_issue(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     repo_full_name: &str,
     issue_number: u64,
 ) -> Result<bool> {
@@ -182,7 +186,7 @@ pub fn render_index(index: &InboxIndex) -> String {
         .join("\n")
 }
 
-fn upsert_item(paths: &PatchbayPaths, item: InboxItem) -> Result<InboxIndex> {
+fn upsert_item(paths: &IssueFinderPaths, item: InboxItem) -> Result<InboxIndex> {
     let mut index = load_index(paths)?;
     index.items.retain(|existing| existing.id != item.id);
     index.items.push(item);
@@ -204,12 +208,12 @@ mod tests {
     use super::{load_index, update_status, upsert_ready, InboxStatus};
     use crate::github::GitHubIssue;
     use crate::handoff::WrittenHandoff;
-    use crate::paths::PatchbayPaths;
+    use crate::paths::IssueFinderPaths;
 
     #[test]
     fn upserts_and_updates_inbox_item() {
         let dir = tempdir().unwrap();
-        let paths = PatchbayPaths {
+        let paths = IssueFinderPaths {
             home: dir.path().to_path_buf(),
             config: dir.path().join("config.toml"),
             cache_dir: dir.path().join("cache"),

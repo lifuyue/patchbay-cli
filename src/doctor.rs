@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
 use crate::github::GitHubClient;
-use crate::paths::PatchbayPaths;
+use crate::paths::IssueFinderPaths;
 use crate::workspace::git_available;
 
 const DOCTOR_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
@@ -17,7 +17,7 @@ pub struct DoctorCheck {
     pub message: String,
 }
 
-pub async fn run_doctor(paths: &PatchbayPaths, config: Option<&Config>) -> Vec<DoctorCheck> {
+pub async fn run_doctor(paths: &IssueFinderPaths, config: Option<&Config>) -> Vec<DoctorCheck> {
     let mut checks = Vec::new();
 
     checks.push(DoctorCheck {
@@ -36,7 +36,7 @@ pub async fn run_doctor(paths: &PatchbayPaths, config: Option<&Config>) -> Vec<D
         message: if paths.config.exists() {
             format!("Config exists at {}", paths.config.display())
         } else {
-            "Config is missing; run `patchbay init`".to_string()
+            "Config is missing; run `issue-finder init`".to_string()
         },
     });
 
@@ -144,7 +144,7 @@ pub fn render_doctor(checks: &[DoctorCheck]) -> String {
         .join("\n")
 }
 
-pub fn ensure_paths(paths: &PatchbayPaths) -> Result<()> {
+pub fn ensure_paths(paths: &IssueFinderPaths) -> Result<()> {
     paths.ensure_layout()
 }
 
@@ -153,7 +153,7 @@ fn directory_writable(path: &std::path::Path) -> bool {
         return false;
     }
 
-    let probe = path.join(".patchbay-doctor-write-test");
+    let probe = path.join(".issue-finder-doctor-write-test");
     match std::fs::write(&probe, b"ok") {
         Ok(()) => {
             let _ = std::fs::remove_file(probe);
@@ -166,7 +166,7 @@ fn directory_writable(path: &std::path::Path) -> bool {
 async fn check_llm_reachable(config: &Config, api_key: &str) -> Result<()> {
     let url = format!("{}/models", config.llm.base_url.trim_end_matches('/'));
     let response = reqwest::Client::builder()
-        .user_agent("patchbay-cli")
+        .user_agent("issue-finder")
         .timeout(DOCTOR_HTTP_TIMEOUT)
         .build()?
         .get(url)

@@ -6,21 +6,21 @@ use std::thread;
 use std::time::{Duration as StdDuration, Instant};
 
 use chrono::{Duration, Utc};
-use patchbay_cli::config::Config;
-use patchbay_cli::paths::PatchbayPaths;
-use patchbay_cli::value_scoring::{GateStatus, RecommendationCategory, RiskTag};
-use patchbay_cli::value_signals::ValueSignalKind;
-use patchbay_cli::workflow;
+use issue_finder::config::Config;
+use issue_finder::paths::IssueFinderPaths;
+use issue_finder::value_scoring::{GateStatus, RecommendationCategory, RiskTag};
+use issue_finder::value_signals::ValueSignalKind;
+use issue_finder::workflow;
 use tempfile::tempdir;
 
 #[tokio::test]
 async fn scout_reorders_candidates_after_value_enrichment() {
     let (base_url, handle) = start_mock_value_github();
-    std::env::set_var("PATCHBAY_GITHUB_API_BASE", &base_url);
+    std::env::set_var("ISSUE_FINDER_GITHUB_API_BASE", &base_url);
     let _env_guard = EnvGuard;
 
     let dir = tempdir().unwrap();
-    let paths = PatchbayPaths {
+    let paths = IssueFinderPaths {
         home: dir.path().to_path_buf(),
         config: dir.path().join("config.toml"),
         cache_dir: dir.path().join("cache"),
@@ -71,7 +71,7 @@ struct EnvGuard;
 
 impl Drop for EnvGuard {
     fn drop(&mut self) {
-        std::env::remove_var("PATCHBAY_GITHUB_API_BASE");
+        std::env::remove_var("ISSUE_FINDER_GITHUB_API_BASE");
     }
 }
 

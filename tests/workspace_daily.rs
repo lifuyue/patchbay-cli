@@ -7,17 +7,17 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use patchbay_cli::config::Config;
-use patchbay_cli::github::GitHubIssue;
-use patchbay_cli::github_enrichment::EnrichedIssue;
-use patchbay_cli::handoff::handoff_id;
-use patchbay_cli::inbox::{load_index, InboxStatus};
-use patchbay_cli::paths::PatchbayPaths;
-use patchbay_cli::value_scoring::{
+use issue_finder::config::Config;
+use issue_finder::github::GitHubIssue;
+use issue_finder::github_enrichment::EnrichedIssue;
+use issue_finder::handoff::handoff_id;
+use issue_finder::inbox::{load_index, InboxStatus};
+use issue_finder::paths::IssueFinderPaths;
+use issue_finder::value_scoring::{
     RankedValueIssue, RecommendationCategory, ScoreBand, ValueAssessment,
 };
-use patchbay_cli::workflow::{self, prepare_value_issue_with_options, PrepareOptions};
-use patchbay_cli::workspace::{git_available, prepare_workspace};
+use issue_finder::workflow::{self, prepare_value_issue_with_options, PrepareOptions};
+use issue_finder::workspace::{git_available, prepare_workspace};
 use tempfile::tempdir;
 
 #[test]
@@ -36,7 +36,7 @@ fn prepares_existing_local_git_workspace() {
     let workspace = prepare_workspace(&paths, &issue).unwrap();
 
     assert_eq!(workspace.info.default_branch, "main");
-    assert_eq!(workspace.info.branch, "patchbay/11-fix-rust-cli-parser");
+    assert_eq!(workspace.info.branch, "issue-finder/11-fix-rust-cli-parser");
     assert!(!workspace.info.dirty);
     assert!(workspace
         .scan
@@ -51,7 +51,7 @@ fn prepares_existing_local_git_workspace() {
 }
 
 #[test]
-fn workspace_prepare_fails_when_patchbay_branch_cannot_be_created() {
+fn workspace_prepare_fails_when_issue_finder_branch_cannot_be_created() {
     if !git_available() {
         return;
     }
@@ -63,13 +63,13 @@ fn workspace_prepare_fails_when_patchbay_branch_cannot_be_created() {
     clone_into_workspace(&remote, &paths, "owner/conflict");
 
     let workspace = paths.workspace_path_for("owner/conflict");
-    run_git(&workspace, &["checkout", "-b", "patchbay"]);
+    run_git(&workspace, &["checkout", "-b", "issue-finder"]);
     run_git(&workspace, &["checkout", "main"]);
 
     let error = prepare_workspace(&paths, &issue("owner/conflict", 12))
         .unwrap_err()
         .to_string();
-    assert!(error.contains("git checkout -b patchbay/12-fix-rust-cli-parser"));
+    assert!(error.contains("git checkout -b issue-finder/12-fix-rust-cli-parser"));
 }
 
 #[tokio::test]
@@ -255,9 +255,12 @@ async fn prepare_writes_agent_safe_runtime_artifacts_without_running_scripts() {
         &fs::read_to_string(&item.handoff_json_path).unwrap(),
     )
     .unwrap();
-    assert_eq!(handoff["agent_policy"]["kind"], "patchbay_agent_policy");
-    assert_eq!(handoff["probe_pack"]["kind"], "patchbay_probe_pack");
-    assert_eq!(handoff["readiness"]["kind"], "patchbay_execution_readiness");
+    assert_eq!(handoff["agent_policy"]["kind"], "issue_finder_agent_policy");
+    assert_eq!(handoff["probe_pack"]["kind"], "issue_finder_probe_pack");
+    assert_eq!(
+        handoff["readiness"]["kind"],
+        "issue_finder_execution_readiness"
+    );
 
     let probe = serde_json::from_str::<serde_json::Value>(
         &fs::read_to_string(&item.probe_json_path).unwrap(),
@@ -296,7 +299,7 @@ async fn prepare_writes_agent_safe_runtime_artifacts_without_running_scripts() {
             .join("context/probe.md"),
     )
     .unwrap();
-    assert!(probe_context.contains("Patchbay did not run tests, lint, build, install"));
+    assert!(probe_context.contains("Issue Finder did not run tests, lint, build, install"));
 
     let events = fs::read_to_string(&item.prepare_events_path).unwrap();
     assert!(events.contains("\"type\":\"prepare_started\""));
@@ -349,14 +352,14 @@ async fn prepare_preserves_llm_summary_enhancement() {
     assert!(markdown.contains("Mock LLM summary"));
 }
 
-fn test_paths(root: &Path) -> PatchbayPaths {
-    PatchbayPaths {
-        home: root.join("patchbay-home"),
-        config: root.join("patchbay-home/config.toml"),
-        cache_dir: root.join("patchbay-home/cache"),
-        workspaces_dir: root.join("patchbay-home/workspaces"),
-        inbox_dir: root.join("patchbay-home/inbox"),
-        reports_dir: root.join("patchbay-home/reports"),
+fn test_paths(root: &Path) -> IssueFinderPaths {
+    IssueFinderPaths {
+        home: root.join("issue-finder-home"),
+        config: root.join("issue-finder-home/config.toml"),
+        cache_dir: root.join("issue-finder-home/cache"),
+        workspaces_dir: root.join("issue-finder-home/workspaces"),
+        inbox_dir: root.join("issue-finder-home/inbox"),
+        reports_dir: root.join("issue-finder-home/reports"),
     }
 }
 
@@ -454,9 +457,9 @@ fn create_remote_repo(root: &Path) -> PathBuf {
         &source,
         &[
             "-c",
-            "user.name=Patchbay",
+            "user.name=Issue Finder",
             "-c",
-            "user.email=patchbay@example.invalid",
+            "user.email=issue-finder@example.invalid",
             "commit",
             "-m",
             "initial",
@@ -511,9 +514,9 @@ fn create_remote_repo_with_package_script(root: &Path) -> PathBuf {
         &source,
         &[
             "-c",
-            "user.name=Patchbay",
+            "user.name=Issue Finder",
             "-c",
-            "user.email=patchbay@example.invalid",
+            "user.email=issue-finder@example.invalid",
             "commit",
             "-m",
             "initial",
@@ -538,7 +541,7 @@ fn create_remote_repo_with_package_script(root: &Path) -> PathBuf {
     remote
 }
 
-fn clone_into_workspace(remote: &Path, paths: &PatchbayPaths, repo_full_name: &str) {
+fn clone_into_workspace(remote: &Path, paths: &IssueFinderPaths, repo_full_name: &str) {
     let workspace = paths.workspace_path_for(repo_full_name);
     fs::create_dir_all(workspace.parent().unwrap()).unwrap();
     run_git(

@@ -1,6 +1,6 @@
-# Patchbay CLI Usage Guide
+# Issue Finder Usage Guide
 
-Patchbay is a local-first task preparation tool for developers who use coding agents. The root README stays short; this guide keeps the operational details for installing, configuring, and running the CLI.
+Issue Finder is a local-first task preparation tool for developers who use coding agents. The root README stays short; this guide keeps the operational details for installing, configuring, and running the CLI.
 
 ## Workflow
 
@@ -33,108 +33,108 @@ Build the debug binary:
 
 ```bash
 cargo build
-target/debug/patchbay --help
+target/debug/issue-finder --help
 ```
 
 Install from the current checkout:
 
 ```bash
 cargo install --path .
-patchbay --help
+issue-finder --help
 ```
 
 ## GitHub Token
 
-Patchbay uses the GitHub REST API to discover issues and read repository metadata. Local use only needs read access.
+Issue Finder uses the GitHub REST API to discover issues and read repository metadata. Local use only needs read access.
 
-You can enter a token during `patchbay init`, or provide one through the environment:
+You can enter a token during `issue-finder init`, or provide one through the environment:
 
 ```bash
 export GITHUB_TOKEN="$(gh auth token)"
 ```
 
-Patchbay does not need GitHub write permissions.
+Issue Finder does not need GitHub write permissions.
 
 ## Common Commands
 
 Initialize local configuration and directories:
 
 ```bash
-patchbay init
+issue-finder init
 ```
 
 Check local readiness:
 
 ```bash
-patchbay doctor
+issue-finder doctor
 ```
 
 Discover and rank candidate issues:
 
 ```bash
-patchbay scout --limit 10
-patchbay scout --refresh
+issue-finder scout --limit 10
+issue-finder scout --refresh
 ```
 
 Prepare a specific issue:
 
 ```bash
-patchbay prepare owner/repo#123
-patchbay prepare --url https://github.com/owner/repo/issues/123
+issue-finder prepare owner/repo#123
+issue-finder prepare --url https://github.com/owner/repo/issues/123
 ```
 
 Read handoff output:
 
 ```bash
-patchbay handoff <inbox-id> --print
-patchbay handoff <inbox-id> --json
+issue-finder handoff <inbox-id> --print
+issue-finder handoff <inbox-id> --json
 ```
 
 Manage local inbox items:
 
 ```bash
-patchbay inbox
-patchbay inbox --json
-patchbay inbox archive <inbox-id>
-patchbay inbox done <inbox-id>
+issue-finder inbox
+issue-finder inbox --json
+issue-finder inbox archive <inbox-id>
+issue-finder inbox done <inbox-id>
 ```
 
 Run the daily preparation flow:
 
 ```bash
-patchbay daily --top 3
-patchbay daily --refresh
-patchbay report
-patchbay report --date YYYY-MM-DD
+issue-finder daily --top 3
+issue-finder daily --refresh
+issue-finder report
+issue-finder report --date YYYY-MM-DD
 ```
 
 ## Command Reference
 
 | Command | Purpose |
 | --- | --- |
-| `patchbay init` | Create local config and Patchbay state directories |
-| `patchbay doctor` | Check Git, GitHub auth, config, directory permissions, platform, and optional LLM status |
-| `patchbay scout --limit 10` | Discover and rank good-first-issue candidates |
-| `patchbay scout --refresh` | Ignore the local GitHub issue cache and request fresh data |
-| `patchbay scout --json` | Print ranked candidates as JSON |
-| `patchbay prepare owner/repo#123` | Prepare one issue and write it to the inbox |
-| `patchbay prepare --url <url>` | Prepare one issue from a GitHub issue URL |
-| `patchbay handoff <id>` | Display an existing handoff |
-| `patchbay handoff <id> --print` | Print human-readable `handoff.md` |
-| `patchbay handoff <id> --json` | Print canonical `handoff.json` |
-| `patchbay inbox` | List local inbox items |
-| `patchbay inbox archive <id>` | Mark an inbox item as archived |
-| `patchbay inbox done <id>` | Mark an inbox item as done |
-| `patchbay daily --top 3` | Scout, prepare Top N issues, and write a daily report |
-| `patchbay report` | Display today's report |
-| `patchbay report --date YYYY-MM-DD` | Display a report for a specific date |
+| `issue-finder init` | Create local config and Issue Finder state directories |
+| `issue-finder doctor` | Check Git, GitHub auth, config, directory permissions, platform, and optional LLM status |
+| `issue-finder scout --limit 10` | Discover and rank good-first-issue candidates |
+| `issue-finder scout --refresh` | Ignore the local GitHub issue cache and request fresh data |
+| `issue-finder scout --json` | Print ranked candidates as JSON |
+| `issue-finder prepare owner/repo#123` | Prepare one issue and write it to the inbox |
+| `issue-finder prepare --url <url>` | Prepare one issue from a GitHub issue URL |
+| `issue-finder handoff <id>` | Display an existing handoff |
+| `issue-finder handoff <id> --print` | Print human-readable `handoff.md` |
+| `issue-finder handoff <id> --json` | Print canonical `handoff.json` |
+| `issue-finder inbox` | List local inbox items |
+| `issue-finder inbox archive <id>` | Mark an inbox item as archived |
+| `issue-finder inbox done <id>` | Mark an inbox item as done |
+| `issue-finder daily --top 3` | Scout, prepare Top N issues, and write a daily report |
+| `issue-finder report` | Display today's report |
+| `issue-finder report --date YYYY-MM-DD` | Display a report for a specific date |
 
 ## Local State Directory
 
-Patchbay stores local state under `~/.patchbay` by default:
+Issue Finder stores local state under `~/.issue-finder` by default:
 
 ```text
-~/.patchbay/
+~/.issue-finder/
   config.toml
   cache/
     github-issues.json
@@ -161,22 +161,22 @@ Patchbay stores local state under `~/.patchbay` by default:
         validation.md
       .agents/
         skills/
-          patchbay-cli/
+          issue-finder/
             SKILL.md
             refs.json
   reports/
     YYYY-MM-DD.md
 ```
 
-Use `PATCHBAY_HOME` for isolated testing or demos:
+Use `ISSUE_FINDER_HOME` for isolated testing or demos:
 
 ```bash
-PATCHBAY_HOME=/tmp/patchbay-demo patchbay doctor
+ISSUE_FINDER_HOME=/tmp/issue-finder-demo issue-finder doctor
 ```
 
 ## Configuration
 
-`~/.patchbay/config.toml`:
+`~/.issue-finder/config.toml`:
 
 ```toml
 [github]
@@ -198,14 +198,14 @@ api_key_env = ""
 model = "gpt-4o-mini"
 ```
 
-If `llm.api_key_env` is set, Patchbay reads the LLM key from that environment variable instead of `llm.api_key`.
+If `llm.api_key_env` is set, Issue Finder reads the LLM key from that environment variable instead of `llm.api_key`.
 
 ## Handoff Output
 
 `handoff.json` contains:
 
 - Issue metadata
-- Workspace path, default branch, Patchbay branch, and dirty status
+- Workspace path, default branch, Issue Finder branch, and dirty status
 - Candidate files
 - Suggested validation commands
 - Warnings
@@ -233,16 +233,16 @@ Runtime topic docs:
 
 ## Safety Boundary
 
-Patchbay is intentionally conservative.
+Issue Finder is intentionally conservative.
 
 Allowed:
 
 - Read GitHub issue and repository metadata
 - Clone or fetch repositories
-- Create or checkout a local Patchbay branch
+- Create or checkout a local Issue Finder branch
 - Scan repository files within a limited scope
 - Run fixed low-risk probes such as `git status --porcelain`, `git branch --show-current`, `git ls-files`, and package script metadata reads
-- Write Patchbay state under `~/.patchbay` or `PATCHBAY_HOME`
+- Write Issue Finder state under `~/.issue-finder` or `ISSUE_FINDER_HOME`
 
 Not allowed:
 
@@ -254,5 +254,5 @@ Not allowed:
 - Create pull requests
 - Reset, clean, or delete workspaces
 
-Patchbay writes suggested validation commands into the handoff package but does not run them automatically.
+Issue Finder writes suggested validation commands into the handoff package but does not run them automatically.
 Validation, build, lint, install, network-heavy, and project-defined script commands are classified as requiring approval or forbidden for downstream agents.

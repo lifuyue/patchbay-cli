@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc" viewBox="0 0 1200 520">
-  <title id="title">Patchbay CLI workflow</title>
-  <desc id="desc">A visual overview showing GitHub issues flowing through Patchbay into a local workspace, handoff files, inbox, and daily report.</desc>
+  <title id="title">Issue Finder workflow</title>
+  <desc id="desc">A visual overview showing GitHub issues flowing through Issue Finder into a local workspace, handoff files, inbox, and daily report.</desc>
   <defs>
     <linearGradient id="panel" x1="0" x2="1" y1="0" y2="1">
       <stop offset="0%" stop-color="#f8fbff"/>
@@ -25,7 +25,7 @@
   </defs>
 
   <rect class="bg" x="0" y="0" width="1200" height="520" rx="28"/>
-  <text class="title" x="72" y="86">Patchbay CLI</text>
+  <text class="title" x="72" y="86">Issue Finder</text>
   <text class="subtitle" x="74" y="122">Local-first issue discovery, workspace prep, and agent handoff packages.</text>
 
   <g transform="translate(72 178)">
@@ -45,10 +45,10 @@
     <circle cx="42" cy="41" r="5" fill="#ff6b65"/>
     <circle cx="60" cy="41" r="5" fill="#f5b941"/>
     <circle cx="78" cy="41" r="5" fill="#4ecb71"/>
-    <text class="mono" x="28" y="88" fill="#dbe8ff">$ patchbay scout</text>
+    <text class="mono" x="28" y="88" fill="#dbe8ff">$ issue-finder scout</text>
     <text class="mono" x="28" y="118" fill="#98e7c4">rank  score  issue</text>
     <text class="mono" x="28" y="148" fill="#ffffff">1     92     #123</text>
-    <text class="mono" x="28" y="178" fill="#dbe8ff">$ patchbay prepare</text>
+    <text class="mono" x="28" y="178" fill="#dbe8ff">$ issue-finder prepare</text>
   </g>
 
   <path class="line" d="M652 258 C690 258 702 258 740 258"/>
@@ -79,6 +79,6 @@
   <g transform="translate(72 404)">
     <rect x="0" y="0" width="1056" height="54" rx="16" fill="#ffffff" stroke="#dce5e2"/>
     <circle cx="31" cy="27" r="8" fill="#2f6fed"/>
-    <text class="body" x="52" y="33">Safe boundary: prepares context and handoff files; source edits, commits, pushes, and PRs stay outside Patchbay.</text>
+    <text class="body" x="52" y="33">Safe boundary: prepares context and handoff files; source edits, commits, pushes, and PRs stay outside Issue Finder.</text>
   </g>
 </svg>

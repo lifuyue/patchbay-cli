@@ -4,8 +4,8 @@ use std::io::{self, Write};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::errors::PatchbayError;
-use crate::paths::{atomic_write, PatchbayPaths};
+use crate::errors::IssueFinderError;
+use crate::paths::{atomic_write, IssueFinderPaths};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Config {
@@ -65,9 +65,9 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn load(paths: &PatchbayPaths) -> Result<Self> {
+    pub fn load(paths: &IssueFinderPaths) -> Result<Self> {
         if !paths.config.exists() {
-            return Err(PatchbayError::MissingConfig.into());
+            return Err(IssueFinderError::MissingConfig.into());
         }
 
         let raw = fs::read_to_string(&paths.config)
@@ -77,7 +77,7 @@ impl Config {
         Ok(config)
     }
 
-    pub fn load_or_default(paths: &PatchbayPaths) -> Result<Self> {
+    pub fn load_or_default(paths: &IssueFinderPaths) -> Result<Self> {
         if paths.config.exists() {
             Self::load(paths)
         } else {
@@ -85,7 +85,7 @@ impl Config {
         }
     }
 
-    pub fn save(&self, paths: &PatchbayPaths) -> Result<()> {
+    pub fn save(&self, paths: &IssueFinderPaths) -> Result<()> {
         paths.ensure_layout()?;
         let raw = toml::to_string_pretty(self)?;
         atomic_write(&paths.config, raw)?;
@@ -101,10 +101,10 @@ impl Config {
     }
 }
 
-pub fn initialize_interactive(paths: &PatchbayPaths, force: bool) -> Result<Config> {
+pub fn initialize_interactive(paths: &IssueFinderPaths, force: bool) -> Result<Config> {
     if paths.config.exists() && !force {
         anyhow::bail!(
-            "{} already exists. Use `patchbay init --force` to overwrite it.",
+            "{} already exists. Use `issue-finder init --force` to overwrite it.",
             paths.config.display()
         );
     }
@@ -112,7 +112,7 @@ pub fn initialize_interactive(paths: &PatchbayPaths, force: bool) -> Result<Conf
     paths.ensure_layout()?;
     let mut config = Config::default();
 
-    println!("Patchbay config: {}", paths.config.display());
+    println!("Issue Finder config: {}", paths.config.display());
     config.github.token = prompt("GitHub token", &config.github.token)?;
     config.github.username = prompt("GitHub username (optional)", &config.github.username)?;
     config.profile.tech_stack = prompt_list("Tech stack", &config.profile.tech_stack)?;

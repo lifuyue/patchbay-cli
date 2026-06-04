@@ -1,20 +1,20 @@
 use std::path::PathBuf;
 
 use chrono::Utc;
-use patchbay_cli::github::GitHubIssue;
-use patchbay_cli::handoff::{write_handoff, Handoff};
-use patchbay_cli::inbox::{load_index, upsert_ready, InboxStatus};
-use patchbay_cli::paths::PatchbayPaths;
-use patchbay_cli::repo_scan::{CandidateFile, RepoScan, ValidationCommand};
-use patchbay_cli::report::{write_daily_report, DailyReport, PreparedReportItem};
-use patchbay_cli::workflow;
-use patchbay_cli::workspace::{PreparedWorkspace, WorkspaceInfo};
+use issue_finder::github::GitHubIssue;
+use issue_finder::handoff::{write_handoff, Handoff};
+use issue_finder::inbox::{load_index, upsert_ready, InboxStatus};
+use issue_finder::paths::IssueFinderPaths;
+use issue_finder::repo_scan::{CandidateFile, RepoScan, ValidationCommand};
+use issue_finder::report::{write_daily_report, DailyReport, PreparedReportItem};
+use issue_finder::workflow;
+use issue_finder::workspace::{PreparedWorkspace, WorkspaceInfo};
 use tempfile::tempdir;
 
 #[test]
-fn writes_handoff_inbox_and_report_under_patchbay_home() {
+fn writes_handoff_inbox_and_report_under_issue_finder_home() {
     let dir = tempdir().unwrap();
-    let paths = PatchbayPaths {
+    let paths = IssueFinderPaths {
         home: dir.path().to_path_buf(),
         config: dir.path().join("config.toml"),
         cache_dir: dir.path().join("cache"),
@@ -45,7 +45,7 @@ fn writes_handoff_inbox_and_report_under_patchbay_home() {
                 .to_string_lossy()
                 .to_string(),
             default_branch: "main".to_string(),
-            branch: "patchbay/123-fix-accessible-button-label".to_string(),
+            branch: "issue-finder/123-fix-accessible-button-label".to_string(),
             dirty: false,
         },
         scan: RepoScan {
@@ -74,7 +74,7 @@ fn writes_handoff_inbox_and_report_under_patchbay_home() {
     assert_eq!(handoff_value["context_pack"]["version"], 1);
     assert_eq!(
         handoff_value["context_pack"]["kind"],
-        "patchbay_progressive_handoff_pack"
+        "issue_finder_progressive_handoff_pack"
     );
     assert_eq!(handoff_value["context_pack"]["entrypoint"], "./codex.md");
     assert!(handoff_value["context_pack"]["body"].is_null());
@@ -100,14 +100,16 @@ fn writes_handoff_inbox_and_report_under_patchbay_home() {
     let validation = std::fs::read_to_string(item_dir.join("context/validation.md")).unwrap();
     assert!(validation.contains("`cargo test`"));
     let safety = std::fs::read_to_string(item_dir.join("context/safety.md")).unwrap();
-    assert!(safety.contains("Patchbay does not install dependencies, commit, push, or create PRs"));
+    assert!(
+        safety.contains("Issue Finder does not install dependencies, commit, push, or create PRs")
+    );
     let probe = std::fs::read_to_string(item_dir.join("context/probe.md")).unwrap();
     assert!(probe.contains("# Probe"));
     let policy = serde_json::from_str::<serde_json::Value>(
         &std::fs::read_to_string(item_dir.join("agent-policy.json")).unwrap(),
     )
     .unwrap();
-    assert_eq!(policy["kind"], "patchbay_agent_policy");
+    assert_eq!(policy["kind"], "issue_finder_agent_policy");
     assert!(
         policy["permission_profile"]["filesystem"]["protected_roots"]
             .as_array()
@@ -119,16 +121,16 @@ fn writes_handoff_inbox_and_report_under_patchbay_home() {
         &std::fs::read_to_string(item_dir.join("probe.json")).unwrap(),
     )
     .unwrap();
-    assert_eq!(probe_json["kind"], "patchbay_probe_pack");
+    assert_eq!(probe_json["kind"], "issue_finder_probe_pack");
     assert!(item_dir.join("prepare-events.jsonl").exists());
     let skill =
-        std::fs::read_to_string(item_dir.join(".agents/skills/patchbay-cli/SKILL.md")).unwrap();
-    assert!(skill.starts_with("# patchbay-cli"));
+        std::fs::read_to_string(item_dir.join(".agents/skills/issue-finder/SKILL.md")).unwrap();
+    assert!(skill.starts_with("# issue-finder"));
     assert!(skill.contains("Read context/entry.md and context/safety.md first"));
     let refs =
-        std::fs::read_to_string(item_dir.join(".agents/skills/patchbay-cli/refs.json")).unwrap();
+        std::fs::read_to_string(item_dir.join(".agents/skills/issue-finder/refs.json")).unwrap();
     let refs = serde_json::from_str::<serde_json::Value>(&refs).unwrap();
-    assert_eq!(refs["skill"], "patchbay-cli");
+    assert_eq!(refs["skill"], "issue-finder");
     assert_eq!(refs["default_load"][0], "context/entry.md");
 
     let index = load_index(&paths).unwrap();
@@ -138,7 +140,7 @@ fn writes_handoff_inbox_and_report_under_patchbay_home() {
     assert_eq!(index.items[0].agent_policy_path, written.agent_policy_path);
     assert!(workflow::read_handoff(&paths, &written.id, true)
         .unwrap()
-        .contains("\"kind\": \"patchbay_handoff\""));
+        .contains("\"kind\": \"issue_finder_handoff\""));
     assert!(workflow::read_handoff(&paths, &written.id, false)
         .unwrap()
         .contains("# Handoff: owner/repo#123"));

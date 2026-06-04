@@ -8,12 +8,12 @@ use crate::github::GitHubIssue;
 use crate::handoff::Handoff;
 use crate::paths::atomic_write;
 
-const PACK_KIND: &str = "patchbay_progressive_handoff_pack";
-const SKILL_NAME: &str = "patchbay-cli";
+const PACK_KIND: &str = "issue_finder_progressive_handoff_pack";
+const SKILL_NAME: &str = "issue-finder";
 const CODEX_ENTRY: &str = "codex.md";
 const CONTEXT_DIR: &str = "context";
-const SKILL_PATH: &str = ".agents/skills/patchbay-cli/SKILL.md";
-const REFS_PATH: &str = ".agents/skills/patchbay-cli/refs.json";
+const SKILL_PATH: &str = ".agents/skills/issue-finder/SKILL.md";
+const REFS_PATH: &str = ".agents/skills/issue-finder/refs.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContextPack {
@@ -137,7 +137,7 @@ fn render_codex_md(dir: &Path, handoff: &Handoff, skill_path: &Path) -> Result<S
     let probe_json_path = display_path(&PathBuf::from(&dir).join("probe.json"))?;
 
     Ok(vec![
-        "# Patchbay Codex Entry".to_string(),
+        "# Issue Finder Codex Entry".to_string(),
         String::new(),
         format!(
             "- Issue: {}#{} - {}",
@@ -243,7 +243,7 @@ fn render_entry_md(handoff: &Handoff) -> String {
         String::new(),
         "## Safety".to_string(),
         String::new(),
-        "- Do not treat Patchbay-generated files as target repository source.".to_string(),
+        "- Do not treat Issue Finder-generated files as target repository source.".to_string(),
         "- Respect agent-policy.json for allowed, approval-required, and forbidden actions."
             .to_string(),
         "- Do not install dependencies, commit, push, or create a PR unless the user explicitly asks.".to_string(),
@@ -453,7 +453,7 @@ fn render_repo_md(handoff: &Handoff, issue: &GitHubIssue) -> String {
         String::new(),
         format!("- Path: {}", handoff.workspace.path),
         format!("- Default branch: {}", handoff.workspace.default_branch),
-        format!("- Patchbay branch: {}", handoff.workspace.branch),
+        format!("- Issue Finder branch: {}", handoff.workspace.branch),
         format!("- Dirty: {}", handoff.workspace.dirty),
         String::new(),
         "## Repository Context".to_string(),
@@ -482,7 +482,7 @@ fn render_validation_md(handoff: &Handoff) -> String {
     let mut lines = vec![
         "# Validation".to_string(),
         String::new(),
-        "Patchbay suggests validation commands only. It does not run them automatically."
+        "Issue Finder suggests validation commands only. It does not run them automatically."
             .to_string(),
         "Detected validation commands require user approval because they may execute repository code."
             .to_string(),
@@ -619,7 +619,7 @@ fn render_probe_md(handoff: &Handoff) -> String {
         String::new(),
         "## Commands Not Run".to_string(),
         String::new(),
-        "- Patchbay did not run tests, lint, build, install, project-defined scripts, or commands inferred from issue text.".to_string(),
+        "- Issue Finder did not run tests, lint, build, install, project-defined scripts, or commands inferred from issue text.".to_string(),
         "- Run validation only after checking agent-policy.json and getting user approval when required.".to_string(),
         String::new(),
         "## Warnings".to_string(),
@@ -638,11 +638,11 @@ fn render_safety_md(handoff: &Handoff) -> String {
     [
         "# Safety".to_string(),
         String::new(),
-        "- Patchbay prepares local workspaces and handoff artifacts only.".to_string(),
-        "- Patchbay does not install dependencies, commit, push, or create PRs.".to_string(),
+        "- Issue Finder prepares local workspaces and handoff artifacts only.".to_string(),
+        "- Issue Finder does not install dependencies, commit, push, or create PRs.".to_string(),
         "- Agent policy manifest: ../agent-policy.json".to_string(),
         "- Probe pack: ../probe.json".to_string(),
-        "- Do not treat Patchbay-generated files under the inbox as target repository source files.".to_string(),
+        "- Do not treat Issue Finder-generated files under the inbox as target repository source files.".to_string(),
         format!("- Target workspace: {}", handoff.workspace.path),
         format!("- Target branch: {}", handoff.workspace.branch),
         format!("- Workspace dirty: {}", handoff.workspace.dirty),
@@ -654,9 +654,9 @@ fn render_safety_md(handoff: &Handoff) -> String {
 
 fn render_skill_md() -> String {
     vec![
-        "# patchbay-cli".to_string(),
+        "# issue-finder".to_string(),
         String::new(),
-        "Use this skill when the user provides a Patchbay handoff directory, codex.md, or inbox item.".to_string(),
+        "Use this skill when the user provides a Issue Finder handoff directory, codex.md, or inbox item.".to_string(),
         String::new(),
         "1. Read context/entry.md and context/safety.md first.".to_string(),
         "2. Do not read every context file at once.".to_string(),
@@ -665,9 +665,9 @@ fn render_skill_md() -> String {
         "5. Read context/issue.md when you need the original issue body and issue metadata.".to_string(),
         "6. Read context/repo.md before planning code changes.".to_string(),
         "7. Read context/validation.md before running validation.".to_string(),
-        "8. Keep Patchbay and coding-agent responsibilities separate: Patchbay prepares evidence and local handoff files; the coding agent performs user-directed code work in the target workspace.".to_string(),
+        "8. Keep Issue Finder and coding-agent responsibilities separate: Issue Finder prepares evidence and local handoff files; the coding agent performs user-directed code work in the target workspace.".to_string(),
         String::new(),
-        "Patchbay-generated inbox files are context, not target repository source files.".to_string(),
+        "Issue Finder-generated inbox files are context, not target repository source files.".to_string(),
     ]
     .join("\n")
 }

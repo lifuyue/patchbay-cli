@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::{Local, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::paths::{atomic_write, PatchbayPaths};
+use crate::paths::{atomic_write, IssueFinderPaths};
 use crate::value_scoring::RecommendationCategory;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -63,7 +63,7 @@ impl DailyReport {
     pub fn render_markdown(&self) -> String {
         let mut lines = vec![
             format!(
-                "# Patchbay Daily Report - {}",
+                "# Issue Finder Daily Report - {}",
                 Local::now().format("%Y-%m-%d")
             ),
             String::new(),
@@ -216,7 +216,7 @@ fn category_heading(category: RecommendationCategory) -> &'static str {
     }
 }
 
-pub fn write_daily_report(paths: &PatchbayPaths, report: &DailyReport) -> Result<String> {
+pub fn write_daily_report(paths: &IssueFinderPaths, report: &DailyReport) -> Result<String> {
     let date = Local::now().format("%Y-%m-%d").to_string();
     let path = paths.report_path(&date);
     atomic_write(&path, report.render_markdown())?;

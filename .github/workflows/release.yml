@@ -27,20 +27,20 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-            archive: patchbay-aarch64-apple-darwin.tar.gz
-            binary: patchbay
+            archive: issue-finder-aarch64-apple-darwin.tar.gz
+            binary: issue-finder
           - os: macos-latest
             target: x86_64-apple-darwin
-            archive: patchbay-x86_64-apple-darwin.tar.gz
-            binary: patchbay
+            archive: issue-finder-x86_64-apple-darwin.tar.gz
+            binary: issue-finder
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            archive: patchbay-x86_64-unknown-linux-gnu.tar.gz
-            binary: patchbay
+            archive: issue-finder-x86_64-unknown-linux-gnu.tar.gz
+            binary: issue-finder
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            archive: patchbay-x86_64-pc-windows-msvc.zip
-            binary: patchbay.exe
+            archive: issue-finder-x86_64-pc-windows-msvc.zip
+            binary: issue-finder.exe
 
     steps:
       - name: Checkout
@@ -64,7 +64,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist package
           cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "package/${{ matrix.binary }}"
-          if [[ "${{ matrix.binary }}" == "patchbay" ]]; then
+          if [[ "${{ matrix.binary }}" == "issue-finder" ]]; then
             chmod 755 "package/${{ matrix.binary }}"
           fi
           if [[ "${{ matrix.archive }}" == *.zip ]]; then
@@ -113,17 +113,17 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          sha256sum patchbay-* > SHA256SUMS
+          sha256sum issue-finder-* > SHA256SUMS
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
-          name: Patchbay CLI ${{ steps.release_tag.outputs.tag }}
+          name: Issue Finder ${{ steps.release_tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           files: |
-            dist/patchbay-aarch64-apple-darwin.tar.gz
-            dist/patchbay-x86_64-apple-darwin.tar.gz
-            dist/patchbay-x86_64-unknown-linux-gnu.tar.gz
-            dist/patchbay-x86_64-pc-windows-msvc.zip
+            dist/issue-finder-aarch64-apple-darwin.tar.gz
+            dist/issue-finder-x86_64-apple-darwin.tar.gz
+            dist/issue-finder-x86_64-unknown-linux-gnu.tar.gz
+            dist/issue-finder-x86_64-pc-windows-msvc.zip
             dist/SHA256SUMS

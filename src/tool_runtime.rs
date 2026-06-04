@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use crate::config::Config;
 use crate::github::GitHubIssue;
-use crate::paths::PatchbayPaths;
+use crate::paths::IssueFinderPaths;
 use crate::prepare_gate::{prepare_gate_decision, PrepareGateDecision};
 use crate::tool_context::{read_context_section, ReadContextError, ReadContextToolArgs};
 use crate::tool_outputs::{
@@ -19,21 +19,21 @@ use crate::tool_outputs::{
 use crate::value_scoring::{RankedValueIssue, RecommendationCategory};
 use crate::workflow::{self, IssueSelector, PrepareOptions, PrepareOutcome};
 
-const TOOL_SCOUT: &str = "patchbay.scout";
-const TOOL_ASSESS: &str = "patchbay.assess";
-const TOOL_PREPARE: &str = "patchbay.prepare";
-const TOOL_READ_CONTEXT: &str = "patchbay.read_context";
+const TOOL_SCOUT: &str = "issue-finder.scout";
+const TOOL_ASSESS: &str = "issue-finder.assess";
+const TOOL_PREPARE: &str = "issue-finder.prepare";
+const TOOL_READ_CONTEXT: &str = "issue-finder.read_context";
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
-pub struct PatchbayToolSpecsEnvelope {
+pub struct IssueFinderToolSpecsEnvelope {
     pub kind: String,
     pub version: u8,
-    pub tools: Vec<PatchbayToolSpec>,
+    pub tools: Vec<IssueFinderToolSpec>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct PatchbayToolSpec {
+pub struct IssueFinderToolSpec {
     pub namespace: Option<String>,
     pub name: String,
     pub description: String,
@@ -42,7 +42,7 @@ pub struct PatchbayToolSpec {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PatchbayToolInvocation {
+pub struct IssueFinderToolInvocation {
     pub call_id: String,
     pub turn_id: Option<String>,
     pub tool_name: String,
@@ -50,25 +50,25 @@ pub struct PatchbayToolInvocation {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
-pub struct PatchbayToolOutput {
+pub struct IssueFinderToolOutput {
     pub call_id: String,
     pub turn_id: Option<String>,
     pub tool_name: String,
     pub success: bool,
     pub status: String,
-    pub content_items: Vec<PatchbayContentItem>,
+    pub content_items: Vec<IssueFinderContentItem>,
     pub structured_content: Value,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum PatchbayContentItem {
+pub enum IssueFinderContentItem {
     InputText { text: String },
 }
 
 #[derive(Debug, Clone)]
-pub struct PatchbayToolRuntime {
-    paths: PatchbayPaths,
+pub struct IssueFinderToolRuntime {
+    paths: IssueFinderPaths,
     config: Config,
 }
 
@@ -95,7 +95,7 @@ impl From<ReadContextError> for RuntimeFailure {
     }
 }
 
-impl PatchbayToolInvocation {
+impl IssueFinderToolInvocation {
     pub fn from_json_arguments(
         tool_name: String,
         arguments: &str,
@@ -117,9 +117,9 @@ impl PatchbayToolInvocation {
     }
 }
 
-impl PatchbayToolOutput {
+impl IssueFinderToolOutput {
     fn success(
-        invocation: &PatchbayToolInvocation,
+        invocation: &IssueFinderToolInvocation,
         status: impl Into<String>,
         content_text: impl Into<String>,
         structured_content: Value,
@@ -130,7 +130,7 @@ impl PatchbayToolOutput {
             tool_name: invocation.tool_name.clone(),
             success: true,
             status: status.into(),
-            content_items: vec![PatchbayContentItem::InputText {
+            content_items: vec![IssueFinderContentItem::InputText {
                 text: content_text.into(),
             }],
             structured_content,
@@ -153,11 +153,11 @@ impl PatchbayToolOutput {
             tool_name: tool_name.clone(),
             success: false,
             status: status.clone(),
-            content_items: vec![PatchbayContentItem::InputText {
+            content_items: vec![IssueFinderContentItem::InputText {
                 text: message.clone(),
             }],
             structured_content: json!({
-                "kind": "patchbay_tool_output",
+                "kind": "issue_finder_tool_output",
                 "tool": tool_name,
                 "status": status,
                 "success": false,
@@ -169,7 +169,7 @@ impl PatchbayToolOutput {
     }
 
     fn failure_with_structured(
-        invocation: &PatchbayToolInvocation,
+        invocation: &IssueFinderToolInvocation,
         status: impl Into<String>,
         content_text: impl Into<String>,
         structured_content: Value,
@@ -180,7 +180,7 @@ impl PatchbayToolOutput {
             tool_name: invocation.tool_name.clone(),
             success: false,
             status: status.into(),
-            content_items: vec![PatchbayContentItem::InputText {
+            content_items: vec![IssueFinderContentItem::InputText {
                 text: content_text.into(),
             }],
             structured_content,
@@ -188,14 +188,14 @@ impl PatchbayToolOutput {
     }
 }
 
-impl PatchbayToolRuntime {
-    pub fn new(paths: PatchbayPaths, config: Config) -> Self {
+impl IssueFinderToolRuntime {
+    pub fn new(paths: IssueFinderPaths, config: Config) -> Self {
         Self { paths, config }
     }
 
-    pub async fn execute(&self, invocation: PatchbayToolInvocation) -> PatchbayToolOutput {
+    pub async fn execute(&self, invocation: IssueFinderToolInvocation) -> IssueFinderToolOutput {
         if !invocation.arguments.is_object() {
-            return PatchbayToolOutput::failure(
+            return IssueFinderToolOutput::failure(
                 invocation.call_id,
                 invocation.turn_id,
                 invocation.tool_name,
@@ -210,21 +210,21 @@ impl PatchbayToolRuntime {
             TOOL_PREPARE => self.call_prepare(&invocation).await,
             TOOL_READ_CONTEXT => self.call_read_context(&invocation),
             _ => Err(RuntimeFailure::InvalidArguments(format!(
-                "unknown Patchbay tool {}",
+                "unknown Issue Finder tool {}",
                 invocation.tool_name
             ))),
         };
 
         match result {
             Ok(output) => output,
-            Err(RuntimeFailure::InvalidArguments(message)) => PatchbayToolOutput::failure(
+            Err(RuntimeFailure::InvalidArguments(message)) => IssueFinderToolOutput::failure(
                 invocation.call_id,
                 invocation.turn_id,
                 invocation.tool_name,
                 "invalid_arguments",
                 message,
             ),
-            Err(RuntimeFailure::System(error)) => PatchbayToolOutput::failure(
+            Err(RuntimeFailure::System(error)) => IssueFinderToolOutput::failure(
                 invocation.call_id,
                 invocation.turn_id,
                 invocation.tool_name,
@@ -236,8 +236,8 @@ impl PatchbayToolRuntime {
 
     async fn call_scout(
         &self,
-        invocation: &PatchbayToolInvocation,
-    ) -> RuntimeResult<PatchbayToolOutput> {
+        invocation: &IssueFinderToolInvocation,
+    ) -> RuntimeResult<IssueFinderToolOutput> {
         let args: ScoutToolArgs = parse_arguments(&invocation.arguments)?;
         let limit = args.limit.unwrap_or(10).max(1);
         let _reserved_min_category = args.min_category;
@@ -262,7 +262,7 @@ impl PatchbayToolRuntime {
             .map(candidate_output)
             .collect::<Vec<_>>();
         let candidate_count = candidates.len();
-        Ok(PatchbayToolOutput::success(
+        Ok(IssueFinderToolOutput::success(
             invocation,
             "ok",
             format!("Found {candidate_count} candidates ({filtered_count} filtered)."),
@@ -272,8 +272,8 @@ impl PatchbayToolRuntime {
 
     async fn call_assess(
         &self,
-        invocation: &PatchbayToolInvocation,
-    ) -> RuntimeResult<PatchbayToolOutput> {
+        invocation: &IssueFinderToolInvocation,
+    ) -> RuntimeResult<IssueFinderToolOutput> {
         let args: AssessToolArgs = parse_arguments(&invocation.arguments)?;
         let selector = issue_selector(args.issue, args.url)?;
         let ranked = self.assess_selection(selector, args.refresh).await?;
@@ -281,7 +281,7 @@ impl PatchbayToolRuntime {
         let issue = issue_output(&ranked.issue);
         let assessment = assessment_output(&ranked);
         let prepare_gate = prepare_gate_output(&ranked.value_assessment);
-        Ok(PatchbayToolOutput::success(
+        Ok(IssueFinderToolOutput::success(
             invocation,
             "ok",
             format!(
@@ -294,8 +294,8 @@ impl PatchbayToolRuntime {
 
     async fn call_prepare(
         &self,
-        invocation: &PatchbayToolInvocation,
-    ) -> RuntimeResult<PatchbayToolOutput> {
+        invocation: &IssueFinderToolInvocation,
+    ) -> RuntimeResult<IssueFinderToolOutput> {
         let args: PrepareToolArgs = parse_arguments(&invocation.arguments)?;
         let bypass_reason = normalized_optional(args.bypass_reason);
         if args.allow_gate_bypass && bypass_reason.is_none() {
@@ -319,7 +319,7 @@ impl PatchbayToolRuntime {
         if let PrepareGateDecision::Blocked { .. } = &decision {
             let structured =
                 prepare_blocked_structured_output(TOOL_PREPARE, issue, assessment, prepare_gate);
-            return Ok(PatchbayToolOutput::success(
+            return Ok(IssueFinderToolOutput::success(
                 invocation,
                 "blocked_by_gate",
                 format!(
@@ -361,11 +361,11 @@ impl PatchbayToolRuntime {
 
     fn call_read_context(
         &self,
-        invocation: &PatchbayToolInvocation,
-    ) -> RuntimeResult<PatchbayToolOutput> {
+        invocation: &IssueFinderToolInvocation,
+    ) -> RuntimeResult<IssueFinderToolOutput> {
         let args: ReadContextToolArgs = parse_arguments(&invocation.arguments)?;
         let structured = read_context_section(&self.paths, TOOL_READ_CONTEXT, args)?;
-        Ok(PatchbayToolOutput::success(
+        Ok(IssueFinderToolOutput::success(
             invocation,
             "ok",
             "Read context section.",
@@ -384,9 +384,9 @@ impl PatchbayToolRuntime {
     }
 }
 
-pub fn list_tool_specs() -> PatchbayToolSpecsEnvelope {
-    PatchbayToolSpecsEnvelope {
-        kind: "patchbay_tool_specs".to_string(),
+pub fn list_tool_specs() -> IssueFinderToolSpecsEnvelope {
+    IssueFinderToolSpecsEnvelope {
+        kind: "issue_finder_tool_specs".to_string(),
         version: 1,
         tools: vec![
             tool_spec(
@@ -409,7 +409,7 @@ pub fn list_tool_specs() -> PatchbayToolSpecsEnvelope {
             ),
             tool_spec(
                 "read_context",
-                "Read one fixed section from a prepared Patchbay handoff context pack.",
+                "Read one fixed section from a prepared Issue Finder handoff context pack.",
                 read_context_schema(),
                 true,
             ),
@@ -418,16 +418,16 @@ pub fn list_tool_specs() -> PatchbayToolSpecsEnvelope {
 }
 
 pub fn default_call_id() -> String {
-    format!("patchbay-call-{}", Utc::now().timestamp_millis())
+    format!("issue-finder-call-{}", Utc::now().timestamp_millis())
 }
 
 fn prepare_outcome_output(
-    invocation: &PatchbayToolInvocation,
-    paths: &PatchbayPaths,
+    invocation: &IssueFinderToolInvocation,
+    paths: &IssueFinderPaths,
     output: PrepareOutputParts,
     outcome: PrepareOutcome,
     gate_bypass: Option<GateBypassOutput>,
-) -> PatchbayToolOutput {
+) -> IssueFinderToolOutput {
     match outcome {
         PrepareOutcome::Prepared(item) => {
             let dir = PathBuf::from(&item.handoff_json_path)
@@ -443,7 +443,7 @@ fn prepare_outcome_output(
                 readiness_output(&item),
                 gate_bypass,
             );
-            PatchbayToolOutput::success(
+            IssueFinderToolOutput::success(
                 invocation,
                 "prepared",
                 format!("Prepared {}.", item.id),
@@ -459,7 +459,7 @@ fn prepare_outcome_output(
                 failure_output(&item),
                 gate_bypass,
             );
-            PatchbayToolOutput::failure_with_structured(
+            IssueFinderToolOutput::failure_with_structured(
                 invocation,
                 "prepare_failed",
                 format!(
@@ -517,9 +517,9 @@ fn tool_spec(
     description: &str,
     input_schema: Value,
     defer_loading: bool,
-) -> PatchbayToolSpec {
-    PatchbayToolSpec {
-        namespace: Some("patchbay".to_string()),
+) -> IssueFinderToolSpec {
+    IssueFinderToolSpec {
+        namespace: Some("issue-finder".to_string()),
         name: name.to_string(),
         description: description.to_string(),
         input_schema,
@@ -639,12 +639,12 @@ struct PrepareToolArgs {
 #[cfg(test)]
 mod tests {
     use super::{
-        list_tool_specs, PatchbayToolInvocation, TOOL_ASSESS, TOOL_PREPARE, TOOL_READ_CONTEXT,
+        list_tool_specs, IssueFinderToolInvocation, TOOL_ASSESS, TOOL_PREPARE, TOOL_READ_CONTEXT,
         TOOL_SCOUT,
     };
 
     #[test]
-    fn lists_four_patchbay_tool_specs() {
+    fn lists_four_issue_finder_tool_specs() {
         let specs = list_tool_specs();
         let names = specs
             .tools
@@ -665,7 +665,7 @@ mod tests {
 
     #[test]
     fn invocation_requires_json_object_arguments() {
-        let error = PatchbayToolInvocation::from_json_arguments(
+        let error = IssueFinderToolInvocation::from_json_arguments(
             TOOL_SCOUT.to_string(),
             "[]",
             Some("call_1".to_string()),

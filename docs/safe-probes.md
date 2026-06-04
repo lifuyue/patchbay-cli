@@ -1,12 +1,12 @@
 # Safe Probes
 
-Safe probes are fixed, bounded commands that Patchbay may run during prepare to understand the workspace without executing project code.
+Safe probes are fixed, bounded commands that Issue Finder may run during prepare to understand the workspace without executing project code.
 
-Patchbay does not accept arbitrary probe strings from issues, config, LLM output, handoff files, or user-provided command text. Probe commands are represented as enum variants and expanded directly to argv arrays.
+Issue Finder does not accept arbitrary probe strings from issues, config, LLM output, handoff files, or user-provided command text. Probe commands are represented as enum variants and expanded directly to argv arrays.
 
 ## Current Probe Set
 
-Patchbay may run:
+Issue Finder may run:
 
 | Probe | Command | Purpose |
 | --- | --- | --- |
@@ -17,11 +17,11 @@ Patchbay may run:
 | `npm_pkg_get_scripts` | `npm pkg get scripts --json` | Read package script metadata |
 | `pnpm_pkg_get_scripts` | `pnpm pkg get scripts --json` | Read package script metadata when pnpm is detected |
 
-Patchbay also statically inspects manifests and discovered files to record package managers, agent instruction files, package scripts, and validation candidates.
+Issue Finder also statically inspects manifests and discovered files to record package managers, agent instruction files, package scripts, and validation candidates.
 
-## Commands Patchbay Does Not Run
+## Commands Issue Finder Does Not Run
 
-Patchbay does not run:
+Issue Finder does not run:
 
 - `cargo test`
 - `cargo check`

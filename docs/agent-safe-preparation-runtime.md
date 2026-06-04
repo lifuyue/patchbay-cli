@@ -1,12 +1,12 @@
 # Agent-Safe Preparation Runtime
 
-Patchbay prepares coding-agent handoffs without becoming a coding agent itself. The agent-safe preparation runtime adds structured safety, probe, and audit artifacts to each prepared inbox item so Codex, Cursor, Claude Code, or a human developer can start from a clearer boundary.
+Issue Finder prepares coding-agent handoffs without becoming a coding agent itself. The agent-safe preparation runtime adds structured safety, probe, and audit artifacts to each prepared inbox item so Codex, Cursor, Claude Code, or a human developer can start from a clearer boundary.
 
-Patchbay still does not modify target repository source, install dependencies, run full validation, commit, push, or create pull requests.
+Issue Finder still does not modify target repository source, install dependencies, run full validation, commit, push, or create pull requests.
 
 ## What It Writes
 
-Each successful `patchbay prepare` or selected `patchbay daily` item writes:
+Each successful `issue-finder prepare` or selected `issue-finder daily` item writes:
 
 ```text
 inbox/<id>/
@@ -26,7 +26,7 @@ inbox/<id>/
     validation.md
   .agents/
     skills/
-      patchbay-cli/
+      issue-finder/
         SKILL.md
         refs.json
 ```
@@ -42,7 +42,7 @@ inbox/<id>/
 ```text
 prepare owner/repo#123
   -> fetch issue metadata
-  -> prepare local workspace and Patchbay branch
+  -> prepare local workspace and Issue Finder branch
   -> scan repository structure
   -> run fixed safe probes
   -> classify validation commands

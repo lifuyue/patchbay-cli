@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 #[derive(Debug, Clone)]
-pub struct PatchbayPaths {
+pub struct IssueFinderPaths {
     pub home: PathBuf,
     pub config: PathBuf,
     pub cache_dir: PathBuf,
@@ -14,13 +14,13 @@ pub struct PatchbayPaths {
     pub reports_dir: PathBuf,
 }
 
-impl PatchbayPaths {
+impl IssueFinderPaths {
     pub fn resolve() -> Result<Self> {
-        let home = match env::var("PATCHBAY_HOME") {
+        let home = match env::var("ISSUE_FINDER_HOME") {
             Ok(value) if !value.trim().is_empty() => PathBuf::from(value),
             _ => dirs::home_dir()
                 .context("unable to determine home directory")?
-                .join(".patchbay"),
+                .join(".issue-finder"),
         };
 
         Ok(Self {

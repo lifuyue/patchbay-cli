@@ -6,25 +6,25 @@
 
 ## 摘要
 
-Patchbay CLI 的核心定位保持不变：本地检索、计算和评估高价值 GitHub issue，准备 workspace，并生成可交给 coding agent 的 handoff。渐进式披露只服务于这个核心输出，目标是降低交给 agent 的初始上下文噪声，而不是把 Patchbay 做成独立 agent、通用 tool registry 或 MCP host。
+Issue Finder 的核心定位保持不变：本地检索、计算和评估高价值 GitHub issue，准备 workspace，并生成可交给 coding agent 的 handoff。渐进式披露只服务于这个核心输出，目标是降低交给 agent 的初始上下文噪声，而不是把 Issue Finder 做成独立 agent、通用 tool registry 或 MCP host。
 
-第一期采用 **Progressive Handoff Pack + Codex-local `patchbay-cli` skill**：
+第一期采用 **Progressive Handoff Pack + Codex-local `issue-finder` skill**：
 
 - `prepare` 和 `daily` 继续生成 canonical `handoff.json` 与人类可读 `handoff.md`。
-- 每个 prepared inbox item 额外生成 `codex.md`、`context/*.md` 和 `.agents/skills/patchbay-cli/SKILL.md`。
+- 每个 prepared inbox item 额外生成 `codex.md`、`context/*.md` 和 `.agents/skills/issue-finder/SKILL.md`。
 - `codex.md` 是给 Codex 的最短入口；agent 初始只读入口和安全边界，再按任务阶段读取更详细的上下文文件。
-- `patchbay-cli` skill 是 Codex 消费 Patchbay handoff pack 的适配层，不执行 Patchbay、不启动 agent、不替代 Codex。
+- `issue-finder` skill 是 Codex 消费 Issue Finder handoff pack 的适配层，不执行 Issue Finder、不启动 agent、不替代 Codex。
 
 ## 产品边界
 
-Patchbay 负责：
+Issue Finder 负责：
 
 - 本地发现和排序高价值 issue。
 - 本地 enrichment、value scoring、evidence pack 生成。
 - 准备本地 workspace、分支、候选文件和验证命令建议。
 - 生成结构化 handoff 和渐进式上下文文件。
 
-Patchbay 不负责：
+Issue Finder 不负责：
 
 - 实现独立 agent runtime。
 - 启动 Codex、Cursor、Claude Code 或其他 coding agent。
@@ -41,7 +41,7 @@ Patchbay 不负责：
 - `codex-rs/core-skills/src/render.rs`：skills 元数据有上下文预算，必要时缩短描述或省略高噪声内容。
 - `codex-rs/core-skills/src/model.rs`：skill 有 metadata、scope、dependencies、policy 和 path，完整 `SKILL.md` 不是唯一入口。
 
-Patchbay 的对应实现应更轻：用文件边界和 manifest 控制披露，不引入交互式 `tool_search` runtime。
+Issue Finder 的对应实现应更轻：用文件边界和 manifest 控制披露，不引入交互式 `tool_search` runtime。
 
 ## 输出结构
 
@@ -61,7 +61,7 @@ inbox/<id>/
     safety.md
   .agents/
     skills/
-      patchbay-cli/
+      issue-finder/
         SKILL.md
         refs.json
 ```
@@ -76,13 +76,13 @@ inbox/<id>/
 {
   "context_pack": {
     "version": 1,
-    "kind": "patchbay_progressive_handoff_pack",
+    "kind": "issue_finder_progressive_handoff_pack",
     "disclosure": "progressive",
     "entrypoint": "./codex.md",
     "context_dir": "./context",
     "skill": {
-      "name": "patchbay-cli",
-      "path": "./.agents/skills/patchbay-cli/SKILL.md"
+      "name": "issue-finder",
+      "path": "./.agents/skills/issue-finder/SKILL.md"
     },
     "files": [
       {
@@ -111,7 +111,7 @@ inbox/<id>/
 - issue 标题、repo、编号、URL。
 - workspace 绝对路径和分支。
 - handoff pack 绝对路径。
-- `patchbay-cli` skill 的绝对路径。
+- `issue-finder` skill 的绝对路径。
 - 初始读取顺序：先读 `context/entry.md` 和 `context/safety.md`。
 - 明确不要一次性读取全部 context 文件。
 
@@ -122,7 +122,7 @@ inbox/<id>/
 `entry.md` 是 agent 初始上下文导航，应包含：
 
 - 本次任务的一句话目标。
-- 为什么 Patchbay 认为它适合进入 agent 工作流的极简摘要。
+- 为什么 Issue Finder 认为它适合进入 agent 工作流的极简摘要。
 - 当前 workspace、分支、候选文件概览。
 - 下一步读取建议。
 - 不超过一屏的安全提醒。
@@ -155,7 +155,7 @@ inbox/<id>/
 
 `repo.md` 承载 workspace 和 repo scan：
 
-- workspace 路径、默认分支、Patchbay 分支、dirty 状态。
+- workspace 路径、默认分支、Issue Finder 分支、dirty 状态。
 - candidate files。
 - scan warnings。
 - repo description、topics、stars/forks/open issues 等必要仓库上下文。
@@ -170,46 +170,46 @@ agent 在规划代码修改前应读取它。
 - 每条命令的来源和适用原因。
 - 如果没有检测到命令，给出保守说明，不凭空创造复杂验证流程。
 
-Patchbay 只建议命令，不自动执行命令。
+Issue Finder 只建议命令，不自动执行命令。
 
 ### `context/safety.md`
 
 `safety.md` 承载必须始终可见的边界：
 
-- Patchbay 不安装依赖、不提交、不推送、不创建 PR。
-- agent 不应把 Patchbay 生成文件当成目标 repo 源码修改对象。
+- Issue Finder 不安装依赖、不提交、不推送、不创建 PR。
+- agent 不应把 Issue Finder 生成文件当成目标 repo 源码修改对象。
 - 若 workspace dirty，应先解释风险。
 - 若验证命令需要网络、长耗时或破坏性操作，agent 应先说明并获得用户确认。
 
-### `.agents/skills/patchbay-cli/SKILL.md`
+### `.agents/skills/issue-finder/SKILL.md`
 
 生成的 skill 标题固定为：
 
 ```md
-# patchbay-cli
+# issue-finder
 ```
 
 它是 Codex 消费当前 handoff pack 的本地适配器。它应指示 Codex：
 
-1. 用户提供 Patchbay handoff 目录、`codex.md` 或 inbox item 时使用此 skill。
+1. 用户提供 Issue Finder handoff 目录、`codex.md` 或 inbox item 时使用此 skill。
 2. 先读 `context/entry.md` 和 `context/safety.md`。
 3. 不要一次性读取所有 context 文件。
 4. 需要评估价值时读 `context/value.md`。
 5. 需要 issue 原文时读 `context/issue.md`。
 6. 规划代码修改前读 `context/repo.md`。
 7. 验证前读 `context/validation.md`。
-8. 保持 Patchbay 和 agent 的职责边界。
+8. 保持 Issue Finder 和 agent 的职责边界。
 
 `SKILL.md` 不应复制完整 evidence 或 issue body；它只定义读取顺序和安全边界。
 
-### `.agents/skills/patchbay-cli/refs.json`
+### `.agents/skills/issue-finder/refs.json`
 
 `refs.json` 是 skill 的结构化引用索引，用于后续 Codex wrapper 或其他 agent wrapper 消费：
 
 ```json
 {
   "version": 1,
-  "skill": "patchbay-cli",
+  "skill": "issue-finder",
   "handoff_id": "<id>",
   "default_load": ["context/entry.md", "context/safety.md"],
   "deferred": [
@@ -237,44 +237,44 @@ Patchbay 只建议命令，不自动执行命令。
 
 ```md
 Use the local skill at:
-<absolute path>/inbox/<id>/.agents/skills/patchbay-cli/SKILL.md
+<absolute path>/inbox/<id>/.agents/skills/issue-finder/SKILL.md
 
 Start with:
 <absolute path>/inbox/<id>/context/entry.md
 <absolute path>/inbox/<id>/context/safety.md
 ```
 
-这样即使 Codex 当前 cwd 是目标 workspace，而不是 Patchbay inbox 目录，也能解析 handoff pack。
+这样即使 Codex 当前 cwd 是目标 workspace，而不是 Issue Finder inbox 目录，也能解析 handoff pack。
 
 ## 工作流影响
 
-### `patchbay prepare`
+### `issue-finder prepare`
 
 准备单个 issue 后：
 
 1. 继续写 `handoff.json`、`handoff.md`。
 2. 生成 progressive context files。
 3. 生成 `codex.md`。
-4. 生成 `.agents/skills/patchbay-cli/SKILL.md` 和 `refs.json`。
+4. 生成 `.agents/skills/issue-finder/SKILL.md` 和 `refs.json`。
 5. CLI 输出中保留 JSON/Markdown 路径，并新增 Codex 入口路径。
 
-### `patchbay daily`
+### `issue-finder daily`
 
 对每个成功 prepared item 执行相同 pack 生成逻辑。日报可以列出 `codex.md` 路径，但不需要展开 context 内容。
 
-### `patchbay handoff`
+### `issue-finder handoff`
 
 保持现有行为：
 
 - `--json` 输出 canonical `handoff.json`。
 - `--print` 输出 `handoff.md`。
 
-第一期不新增 `patchbay agent` 子命令，也不要求 `handoff` 命令读取 progressive pack。后续如果需要，可以增加轻量 `--codex` 输出 `codex.md`，但不作为第一期范围。
+第一期不新增 `issue-finder agent` 子命令，也不要求 `handoff` 命令读取 progressive pack。后续如果需要，可以增加轻量 `--codex` 输出 `codex.md`，但不作为第一期范围。
 
 ## 失败模式
 
 - 如果 pack 文件写入失败，当前 prepare 应视为失败；`daily` 记录该 issue 为 prepare failed 并继续后续任务。
-- 写文件应沿用 Patchbay 的 atomic write 边界，避免半写文件。
+- 写文件应沿用 Issue Finder 的 atomic write 边界，避免半写文件。
 - 旧 inbox item 没有 `context_pack` 时，现有 `handoff` 行为不变。
 - 如果 skill 文件缺失，`codex.md` 仍应让用户从 `context/entry.md` 开始；skill 缺失是降级，不应阻止用户读取 handoff。
 
@@ -283,21 +283,21 @@ Start with:
 新增或扩展测试覆盖：
 
 - `handoff.json` 包含 `context_pack` 引用，且不内嵌完整 context 正文。
-- `prepare` 成功后写出 `codex.md`、`context/*.md`、`.agents/skills/patchbay-cli/SKILL.md` 和 `refs.json`。
+- `prepare` 成功后写出 `codex.md`、`context/*.md`、`.agents/skills/issue-finder/SKILL.md` 和 `refs.json`。
 - `codex.md` 包含 handoff pack、skill、entry、safety 的绝对路径。
 - `entry.md` 不包含完整 issue body 或完整 evidence，保持 compact。
 - `value.md` 包含 value assessment、signals、risks、missing evidence 和 evidence pack。
 - `repo.md` 包含 workspace、branch、candidate files 和 scan warnings。
 - `validation.md` 包含检测到的 validation commands；无命令时有保守说明。
-- `safety.md` 包含 Patchbay 不提交、不推送、不创建 PR 的边界。
-- `.agents/skills/patchbay-cli/SKILL.md` 标题为 `# patchbay-cli`，并要求渐进读取。
+- `safety.md` 包含 Issue Finder 不提交、不推送、不创建 PR 的边界。
+- `.agents/skills/issue-finder/SKILL.md` 标题为 `# issue-finder`，并要求渐进读取。
 - `daily` 对每个 prepared item 生成 pack，单个写入失败时仍延续现有失败隔离语义。
 
 ## 非目标
 
 第一期不做：
 
-- `patchbay agent` 子命令。
+- `issue-finder agent` 子命令。
 - 通用 tool registry 或 tool search runtime。
 - MCP server、plugin install、connector install。
 - agent execution、agent orchestration 或多 agent 调度。
@@ -306,7 +306,7 @@ Start with:
 
 ## 验收标准
 
-- 用户运行 `patchbay prepare owner/repo#123` 后，可以把生成的 `codex.md` 交给 Codex。
+- 用户运行 `issue-finder prepare owner/repo#123` 后，可以把生成的 `codex.md` 交给 Codex。
 - Codex 初始只需要读取 `codex.md`、`context/entry.md` 和 `context/safety.md` 就能开始理解任务。
 - 更详细的价值、issue、repo、validation 信息都可通过明确文件路径按需读取。
-- Patchbay 的核心竞争力仍聚焦在本地高价值 issue 计算和 handoff 生成，而不是 agent runtime。
+- Issue Finder 的核心竞争力仍聚焦在本地高价值 issue 计算和 handoff 生成，而不是 agent runtime。

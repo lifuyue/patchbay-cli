@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::prepare_events::PrepareEventLog;
 use crate::repo_scan::{RepoScan, ValidationCommand};
 
-const PROBE_KIND: &str = "patchbay_probe_pack";
+const PROBE_KIND: &str = "issue_finder_probe_pack";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(3);
 const DEFAULT_MAX_OUTPUT_BYTES: usize = 16 * 1024;
 const DEFAULT_MAX_OUTPUT_LINES: usize = 200;

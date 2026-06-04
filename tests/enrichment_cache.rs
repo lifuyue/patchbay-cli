@@ -4,11 +4,11 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use patchbay_cli::config::Config;
-use patchbay_cli::github::GitHubIssue;
-use patchbay_cli::github_enrichment::GitHubEnrichmentClient;
-use patchbay_cli::paths::PatchbayPaths;
-use patchbay_cli::value_scoring::assess_issue;
+use issue_finder::config::Config;
+use issue_finder::github::GitHubIssue;
+use issue_finder::github_enrichment::GitHubEnrichmentClient;
+use issue_finder::paths::IssueFinderPaths;
+use issue_finder::value_scoring::assess_issue;
 use tempfile::tempdir;
 
 #[tokio::test]
@@ -96,14 +96,14 @@ async fn enrichment_samples_tail_pages_for_recent_stars_and_comments() {
     assert!(enriched.activity.maintainer_recent_response);
 }
 
-fn test_paths(root: &std::path::Path) -> PatchbayPaths {
-    PatchbayPaths {
-        home: root.join("patchbay-home"),
-        config: root.join("patchbay-home/config.toml"),
-        cache_dir: root.join("patchbay-home/cache"),
-        workspaces_dir: root.join("patchbay-home/workspaces"),
-        inbox_dir: root.join("patchbay-home/inbox"),
-        reports_dir: root.join("patchbay-home/reports"),
+fn test_paths(root: &std::path::Path) -> IssueFinderPaths {
+    IssueFinderPaths {
+        home: root.join("issue-finder-home"),
+        config: root.join("issue-finder-home/config.toml"),
+        cache_dir: root.join("issue-finder-home/cache"),
+        workspaces_dir: root.join("issue-finder-home/workspaces"),
+        inbox_dir: root.join("issue-finder-home/inbox"),
+        reports_dir: root.join("issue-finder-home/reports"),
     }
 }
 

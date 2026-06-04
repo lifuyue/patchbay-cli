@@ -10,7 +10,7 @@ use crate::context_pack::{default_context_pack, write_context_pack, ContextPack}
 use crate::evidence_pack::EvidencePack;
 use crate::github::GitHubIssue;
 use crate::llm_review::LlmReview;
-use crate::paths::{atomic_write, sanitize_repo_name, PatchbayPaths};
+use crate::paths::{atomic_write, sanitize_repo_name, IssueFinderPaths};
 use crate::prepare_events::PrepareEventLog;
 use crate::probe::ProbePack;
 use crate::readiness::{assess_readiness, ExecutionReadiness};
@@ -130,7 +130,7 @@ impl Handoff {
 
         Self {
             version: 1,
-            kind: "patchbay_handoff".to_string(),
+            kind: "issue_finder_handoff".to_string(),
             id,
             created_at: Utc::now().to_rfc3339(),
             issue: HandoffIssue {
@@ -422,7 +422,7 @@ pub fn handoff_id(issue: &GitHubIssue) -> String {
 }
 
 pub fn write_handoff(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     handoff: &Handoff,
     issue: &GitHubIssue,
 ) -> Result<WrittenHandoff> {
@@ -430,7 +430,7 @@ pub fn write_handoff(
 }
 
 pub fn write_handoff_with_events(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     handoff: &Handoff,
     issue: &GitHubIssue,
     events: Option<&PrepareEventLog>,
@@ -555,7 +555,7 @@ mod tests {
             info: WorkspaceInfo {
                 path: "/tmp/repo".to_string(),
                 default_branch: "main".to_string(),
-                branch: "patchbay/123-fix-accessible-button-label".to_string(),
+                branch: "issue-finder/123-fix-accessible-button-label".to_string(),
                 dirty: false,
             },
             scan: RepoScan {
@@ -575,11 +575,11 @@ mod tests {
 
         let handoff = Handoff::build(&issue, &workspace);
         assert_eq!(handoff.version, 1);
-        assert_eq!(handoff.kind, "patchbay_handoff");
+        assert_eq!(handoff.kind, "issue_finder_handoff");
         assert_eq!(handoff.context_pack.version, 1);
         assert_eq!(
             handoff.context_pack.kind,
-            "patchbay_progressive_handoff_pack"
+            "issue_finder_progressive_handoff_pack"
         );
         assert_eq!(handoff.context.candidate_files[0].path, "src/button.rs");
         assert!(handoff

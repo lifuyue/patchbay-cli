@@ -1,15 +1,15 @@
 use anyhow::Result;
 use clap::Parser;
-use patchbay_cli::cli::{Cli, Command, InboxCommand, ToolsCommand};
-use patchbay_cli::config::{initialize_interactive, Config};
-use patchbay_cli::doctor;
-use patchbay_cli::inbox::{self, InboxStatus};
-use patchbay_cli::paths::PatchbayPaths;
-use patchbay_cli::tool_runtime::{
-    default_call_id, list_tool_specs, PatchbayToolInvocation, PatchbayToolOutput,
-    PatchbayToolRuntime,
+use issue_finder::cli::{Cli, Command, InboxCommand, ToolsCommand};
+use issue_finder::config::{initialize_interactive, Config};
+use issue_finder::doctor;
+use issue_finder::inbox::{self, InboxStatus};
+use issue_finder::paths::IssueFinderPaths;
+use issue_finder::tool_runtime::{
+    default_call_id, list_tool_specs, IssueFinderToolInvocation, IssueFinderToolOutput,
+    IssueFinderToolRuntime,
 };
-use patchbay_cli::workflow;
+use issue_finder::workflow;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,12 +21,12 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let paths = PatchbayPaths::resolve()?;
+    let paths = IssueFinderPaths::resolve()?;
 
     match cli.command {
         Command::Init(args) => {
             let config = initialize_interactive(&paths, args.force)?;
-            println!("Patchbay initialized at {}", paths.home.display());
+            println!("Issue Finder initialized at {}", paths.home.display());
             if config.github.token.trim().is_empty() {
                 println!(
                     "GitHub token is empty; `scout`, `prepare`, and `daily` may hit API limits."
@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
             }
             ToolsCommand::Call(args) => {
                 let call_id = args.call_id.unwrap_or_else(default_call_id);
-                let invocation = PatchbayToolInvocation::from_json_arguments(
+                let invocation = IssueFinderToolInvocation::from_json_arguments(
                     args.tool.clone(),
                     &args.arguments,
                     Some(call_id.clone()),
@@ -94,11 +94,11 @@ async fn main() -> Result<()> {
                 let output = match invocation {
                     Ok(invocation) => match Config::load_or_default(&paths) {
                         Ok(config) => {
-                            PatchbayToolRuntime::new(paths.clone(), config)
+                            IssueFinderToolRuntime::new(paths.clone(), config)
                                 .execute(invocation)
                                 .await
                         }
-                        Err(error) => PatchbayToolOutput::failure(
+                        Err(error) => IssueFinderToolOutput::failure(
                             call_id,
                             args.turn_id,
                             args.tool,
@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
                             error.to_string(),
                         ),
                     },
-                    Err(error) => PatchbayToolOutput::failure(
+                    Err(error) => IssueFinderToolOutput::failure(
                         call_id,
                         args.turn_id,
                         args.tool,

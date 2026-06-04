@@ -2,7 +2,7 @@
 
 ## Summary
 
-Patchbay's value ranking now depends on deterministic local interpretation of GitHub metadata. The current tests cover individual pieces, but they do not yet provide a clear scenario matrix for judging whether an issue is high value, low value, risky, actionable, established, or growth-oriented.
+Issue Finder's value ranking now depends on deterministic local interpretation of GitHub metadata. The current tests cover individual pieces, but they do not yet provide a clear scenario matrix for judging whether an issue is high value, low value, risky, actionable, established, or growth-oriented.
 
 This design adds focused test coverage for the high-value issue algorithm, with two layers:
 

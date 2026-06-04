@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::config::Config;
-use crate::errors::PatchbayError;
-use crate::paths::{atomic_write, PatchbayPaths};
+use crate::errors::IssueFinderError;
+use crate::paths::{atomic_write, IssueFinderPaths};
 
 const SEARCH_CACHE_TTL_MINUTES: i64 = 10;
 const SEARCH_PER_LABEL_LIMIT: usize = 50;
@@ -35,16 +35,16 @@ impl IssueRef {
 
         let (repo_part, number_part) = value
             .split_once('#')
-            .ok_or(PatchbayError::InvalidIssueReference)?;
+            .ok_or(IssueFinderError::InvalidIssueReference)?;
         let (owner, repo) = repo_part
             .split_once('/')
-            .ok_or(PatchbayError::InvalidIssueReference)?;
+            .ok_or(IssueFinderError::InvalidIssueReference)?;
         let number = number_part
             .parse::<u64>()
-            .map_err(|_| PatchbayError::InvalidIssueReference)?;
+            .map_err(|_| IssueFinderError::InvalidIssueReference)?;
 
         if owner.trim().is_empty() || repo.trim().is_empty() || number == 0 {
-            return Err(PatchbayError::InvalidIssueReference.into());
+            return Err(IssueFinderError::InvalidIssueReference.into());
         }
 
         Ok(Self {
@@ -55,22 +55,22 @@ impl IssueRef {
     }
 
     pub fn parse_url(value: &str) -> Result<Self> {
-        let url = Url::parse(value).map_err(|_| PatchbayError::InvalidIssueReference)?;
+        let url = Url::parse(value).map_err(|_| IssueFinderError::InvalidIssueReference)?;
         if url.host_str() != Some("github.com") {
-            return Err(PatchbayError::InvalidIssueReference.into());
+            return Err(IssueFinderError::InvalidIssueReference.into());
         }
 
         let parts = url
             .path_segments()
-            .ok_or(PatchbayError::InvalidIssueReference)?;
+            .ok_or(IssueFinderError::InvalidIssueReference)?;
         let segments = parts.collect::<Vec<_>>();
         if segments.len() < 4 || segments[2] != "issues" {
-            return Err(PatchbayError::InvalidIssueReference.into());
+            return Err(IssueFinderError::InvalidIssueReference.into());
         }
 
         let number = segments[3]
             .parse::<u64>()
-            .map_err(|_| PatchbayError::InvalidIssueReference)?;
+            .map_err(|_| IssueFinderError::InvalidIssueReference)?;
 
         Ok(Self {
             owner: segments[0].to_string(),
@@ -174,19 +174,19 @@ pub struct GitHubClient {
 impl GitHubClient {
     pub fn new(config: &Config) -> Result<Self> {
         let http = reqwest::Client::builder()
-            .user_agent("patchbay-cli")
+            .user_agent("issue-finder")
             .build()?;
         Ok(Self {
             http,
             token: config.github.token.clone(),
-            api_base_url: std::env::var("PATCHBAY_GITHUB_API_BASE")
+            api_base_url: std::env::var("ISSUE_FINDER_GITHUB_API_BASE")
                 .unwrap_or_else(|_| "https://api.github.com".to_string()),
         })
     }
 
     pub async fn discover_issues(
         &self,
-        paths: &PatchbayPaths,
+        paths: &IssueFinderPaths,
         refresh: bool,
     ) -> Result<Vec<GitHubIssue>> {
         if !refresh {
@@ -400,7 +400,7 @@ pub fn build_search_query(label: &str) -> String {
     format!("label:\"{label}\" archived:false is:issue is:open no:assignee")
 }
 
-fn load_cached_issues(paths: &PatchbayPaths) -> Result<Option<Vec<GitHubIssue>>> {
+fn load_cached_issues(paths: &IssueFinderPaths) -> Result<Option<Vec<GitHubIssue>>> {
     let cache_path = paths.issue_cache_path();
     if !cache_path.exists() {
         return Ok(None);
@@ -416,7 +416,7 @@ fn load_cached_issues(paths: &PatchbayPaths) -> Result<Option<Vec<GitHubIssue>>>
     Ok(Some(payload.issues))
 }
 
-fn save_cached_issues(paths: &PatchbayPaths, issues: &[GitHubIssue]) -> Result<()> {
+fn save_cached_issues(paths: &IssueFinderPaths, issues: &[GitHubIssue]) -> Result<()> {
     let payload = IssueCachePayload {
         fetched_at: Utc::now(),
         issues: issues.to_vec(),
@@ -436,10 +436,10 @@ async fn require_success(response: reqwest::Response) -> Result<reqwest::Respons
 
     let body = response.text().await.unwrap_or_default();
     if status == StatusCode::FORBIDDEN || status == StatusCode::TOO_MANY_REQUESTS {
-        return Err(PatchbayError::GitHubRateLimited.into());
+        return Err(IssueFinderError::GitHubRateLimited.into());
     }
 
-    Err(PatchbayError::GitHubResponse(format!("{status}: {body}")).into())
+    Err(IssueFinderError::GitHubResponse(format!("{status}: {body}")).into())
 }
 
 fn parse_repo_api_url(value: &str) -> Result<(String, String)> {

@@ -1,8 +1,8 @@
-# Patchbay macOS CI Design
+# Issue Finder macOS CI Design
 
 ## Summary
 
-Patchbay should add a small GitHub Actions CI workflow that runs the project's basic Rust quality checks on macOS. This first CI iteration is intentionally limited to validation only: it should not package binaries, publish releases, upload artifacts, or require external service secrets.
+Issue Finder should add a small GitHub Actions CI workflow that runs the project's basic Rust quality checks on macOS. This first CI iteration is intentionally limited to validation only: it should not package binaries, publish releases, upload artifacts, or require external service secrets.
 
 The goal is to catch formatting, lint, and test regressions before code reaches `main` while keeping the pipeline simple enough to maintain during early product development.
 
@@ -13,7 +13,7 @@ The goal is to catch formatting, lint, and test regressions before code reaches 
 - Use a macOS runner because the current primary development and verification environment is macOS.
 - Match the commands documented in `README.md`.
 - Avoid publishing, packaging, signing, or release automation in this iteration.
-- Keep the workflow independent from GitHub API tokens, LLM API keys, and Patchbay user configuration.
+- Keep the workflow independent from GitHub API tokens, LLM API keys, and Issue Finder user configuration.
 
 ## Non-Goals
 
@@ -101,7 +101,7 @@ GitHub event
   -> report job status to GitHub
 ```
 
-No Patchbay runtime state should be checked in or persisted. Tests that need local state should continue to use temporary directories.
+No Issue Finder runtime state should be checked in or persisted. Tests that need local state should continue to use temporary directories.
 
 ## Error Handling
 
@@ -122,7 +122,7 @@ The tests should not rely on:
 - `GITHUB_TOKEN`
 - GitHub Personal Access Tokens
 - LLM API keys
-- user-specific `PATCHBAY_HOME`
+- user-specific `ISSUE_FINDER_HOME`
 
 Existing tests use local mock servers, temporary directories, and local git repositories, which fits this boundary.
 

@@ -12,7 +12,7 @@ use crate::handoff::{handoff_id, write_handoff_with_events, Handoff, WrittenHand
 use crate::inbox;
 use crate::llm;
 use crate::llm_review;
-use crate::paths::PatchbayPaths;
+use crate::paths::IssueFinderPaths;
 use crate::prepare_events::PrepareEventLog;
 use crate::prepare_gate::default_prepare_allowed;
 use crate::probe::SafeProbeRunner;
@@ -75,7 +75,7 @@ fn normalize_optional(value: &Option<String>) -> Option<String> {
 }
 
 pub async fn scout(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     config: &Config,
     limit: usize,
     refresh: bool,
@@ -93,7 +93,7 @@ pub async fn scout(
 }
 
 pub async fn assess_issue_selection(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     config: &Config,
     selector: IssueSelector,
     refresh: bool,
@@ -107,7 +107,7 @@ pub async fn assess_issue_selection(
 }
 
 pub async fn prepare_from_input(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     config: &Config,
     issue: Option<String>,
     url: Option<String>,
@@ -127,7 +127,7 @@ pub async fn prepare_from_input(
 }
 
 pub async fn prepare_issue(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     config: &Config,
     issue: GitHubIssue,
 ) -> Result<PrepareOutcome> {
@@ -146,7 +146,7 @@ pub async fn prepare_issue(
 }
 
 pub async fn prepare_value_issue_with_options(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     config: &Config,
     ranked: RankedValueIssue,
     options: PrepareOptions,
@@ -274,7 +274,7 @@ pub async fn prepare_value_issue_with_options(
 }
 
 pub async fn daily(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     config: &Config,
     top: Option<usize>,
     refresh: bool,
@@ -303,7 +303,7 @@ pub async fn daily(
 }
 
 pub async fn daily_from_ranked(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     config: &Config,
     ranked: Vec<RankedValueIssue>,
     discovery_count: usize,
@@ -361,7 +361,7 @@ pub async fn daily_from_ranked(
     Ok((report, report_path))
 }
 
-pub fn read_handoff(paths: &PatchbayPaths, id: &str, json: bool) -> Result<String> {
+pub fn read_handoff(paths: &IssueFinderPaths, id: &str, json: bool) -> Result<String> {
     let item = inbox::find_item(paths, id)?;
     let path = if json {
         item.handoff_json_path
@@ -375,7 +375,7 @@ pub fn read_handoff(paths: &PatchbayPaths, id: &str, json: bool) -> Result<Strin
     fs::read_to_string(&path).with_context(|| format!("unable to read {path}"))
 }
 
-pub fn read_report(paths: &PatchbayPaths, date: Option<String>) -> Result<String> {
+pub fn read_report(paths: &IssueFinderPaths, date: Option<String>) -> Result<String> {
     let date = date.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
     let path = paths.report_path(&date);
     fs::read_to_string(&path).with_context(|| format!("unable to read {}", path.display()))
@@ -462,7 +462,7 @@ pub fn render_daily(report: &DailyReport, path: &str) -> String {
 }
 
 async fn enrich_ranked_issues(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     config: &Config,
     enrichment: &GitHubEnrichmentClient,
     ranked: Vec<crate::scoring::RankedIssue>,
@@ -486,7 +486,7 @@ async fn enrich_ranked_issues(
 }
 
 async fn enrich_issue_for_value(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     config: &Config,
     enrichment: &GitHubEnrichmentClient,
     issue: GitHubIssue,
@@ -496,7 +496,7 @@ async fn enrich_issue_for_value(
 }
 
 async fn enrich_issue_for_value_with_competition(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     config: &Config,
     enrichment: &GitHubEnrichmentClient,
     issue: GitHubIssue,

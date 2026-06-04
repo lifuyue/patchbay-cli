@@ -6,7 +6,7 @@
 
 ## 摘要
 
-Patchbay 下一阶段应从“只生成 handoff 文件给 coding agent 阅读”升级为“提供 Codex-like tool contract，让 agent 通过结构化 tool call 获取、筛选、准备和按需读取上下文”。handoff 文件继续存在，但它的产品定位变为持久化 evidence/context store，而不是 agent 交互的主协议。
+Issue Finder 下一阶段应从“只生成 handoff 文件给 coding agent 阅读”升级为“提供 Codex-like tool contract，让 agent 通过结构化 tool call 获取、筛选、准备和按需读取上下文”。handoff 文件继续存在，但它的产品定位变为持久化 evidence/context store，而不是 agent 交互的主协议。
 
 本设计采用 C 方案：先定义稳定的内部 tool runtime contract，再用 CLI JSON adapter 落地第一版，后续可复用同一 runtime 接 MCP 或 Codex dynamic tool adapter。第一版不直接实现 MCP server，但所有输入输出都保持与 Codex tool-call 形态兼容。
 
@@ -33,16 +33,16 @@ Patchbay 下一阶段应从“只生成 handoff 文件给 coding agent 阅读”
 
 ## 目标
 
-- 提供 Patchbay Tool Contract v1，让 coding agent 通过结构化 tool call 使用 Patchbay。
+- 提供 Issue Finder Tool Contract v1，让 coding agent 通过结构化 tool call 使用 Issue Finder。
 - 保留现有 scout、assessment、prepare、handoff、context pack 能力，并把它们包装成稳定 tool runtime。
 - 让 gate 成为 `prepare` 的前置策略，默认阻止低价值或低确定性目标进入准备流程。
 - 将低深度填充、低信任仓库、竞争 PR 饱和等判断作为结构化结果暴露，而不是只写进 Markdown。
 - 先落地 CLI JSON adapter，方便本地验证和后续 MCP/Codex adapter 复用。
-- 保持 Patchbay 安全边界：只准备本地 workspace 和 handoff，不修改目标仓库源码，不提交，不推送，不创建 PR。
+- 保持 Issue Finder 安全边界：只准备本地 workspace 和 handoff，不修改目标仓库源码，不提交，不推送，不创建 PR。
 
 ## 非目标
 
-- 不把 Patchbay 改成自治 coding agent。
+- 不把 Issue Finder 改成自治 coding agent。
 - 不在 v1 直接实现 MCP server。
 - 不替换现有 `scout`、`prepare`、`daily` 人类 CLI 工作流。
 - 不让 agent 绕过 gate 后静默 prepare。
@@ -57,7 +57,7 @@ agent 首先调用 tool 获取结构化结果。handoff、context pack、probe p
 
 ### Gate Before Prepare
 
-`patchbay.prepare` 默认只准备高价值目标：
+`issue-finder.prepare` 默认只准备高价值目标：
 
 - `high_value_ready`
 - `high_value_needs_scoping`
@@ -77,7 +77,7 @@ agent 首先调用 tool 获取结构化结果。handoff、context pack、probe p
 
 ### Progressive Context
 
-`scout`、`assess`、`prepare` 默认返回 compact summary 和 evidence refs。完整 issue body、repo context、validation context 和 handoff JSON 通过 `patchbay.read_context` 按需读取。
+`scout`、`assess`、`prepare` 默认返回 compact summary 和 evidence refs。完整 issue body、repo context、validation context 和 handoff JSON 通过 `issue-finder.read_context` 按需读取。
 
 ### Adapter Is Thin
 
@@ -121,10 +121,10 @@ src/tool_context.rs
 
 ### ToolSpec
 
-Patchbay tool spec 应接近 Codex `DynamicToolSpec`：
+Issue Finder tool spec 应接近 Codex `DynamicToolSpec`：
 
 ```rust
-pub struct PatchbayToolSpec {
+pub struct IssueFinderToolSpec {
     pub namespace: Option<String>,
     pub name: String,
     pub description: String,
@@ -133,19 +133,19 @@ pub struct PatchbayToolSpec {
 }
 ```
 
-v1 namespace 固定为 `patchbay`。模型或 adapter 看到的完整名为：
+v1 namespace 固定为 `issue-finder`。模型或 adapter 看到的完整名为：
 
 ```text
-patchbay.scout
-patchbay.assess
-patchbay.prepare
-patchbay.read_context
+issue-finder.scout
+issue-finder.assess
+issue-finder.prepare
+issue-finder.read_context
 ```
 
 ### ToolInvocation
 
 ```rust
-pub struct PatchbayToolInvocation {
+pub struct IssueFinderToolInvocation {
     pub call_id: String,
     pub turn_id: Option<String>,
     pub tool_name: String,
@@ -153,18 +153,18 @@ pub struct PatchbayToolInvocation {
 }
 ```
 
-`call_id` 由调用方传入；CLI adapter 未传入时可生成稳定前缀，例如 `patchbay-call-{timestamp}`。
+`call_id` 由调用方传入；CLI adapter 未传入时可生成稳定前缀，例如 `issue-finder-call-{timestamp}`。
 
 ### ToolOutput
 
 ```rust
-pub struct PatchbayToolOutput {
+pub struct IssueFinderToolOutput {
     pub call_id: String,
     pub turn_id: Option<String>,
     pub tool_name: String,
     pub success: bool,
     pub status: String,
-    pub content_items: Vec<PatchbayContentItem>,
+    pub content_items: Vec<Issue FinderContentItem>,
     pub structured_content: serde_json::Value,
 }
 ```
@@ -172,7 +172,7 @@ pub struct PatchbayToolOutput {
 content item v1：
 
 ```rust
-pub enum PatchbayContentItem {
+pub enum Issue FinderContentItem {
     InputText { text: String },
 }
 ```
@@ -188,7 +188,7 @@ pub enum PatchbayContentItem {
 
 ## Tools
 
-### `patchbay.scout`
+### `issue-finder.scout`
 
 用途：发现并排序候选，返回 gate-aware compact list。
 
@@ -214,8 +214,8 @@ pub enum PatchbayContentItem {
 
 ```json
 {
-  "kind": "patchbay_tool_output",
-  "tool": "patchbay.scout",
+  "kind": "issue_finder_tool_output",
+  "tool": "issue-finder.scout",
   "status": "ok",
   "candidates": [
     {
@@ -253,7 +253,7 @@ pub enum PatchbayContentItem {
 - 排序沿用现有 category-first 排序。
 - 输出必须包含 gate summary，不能只返回分数。
 
-### `patchbay.assess`
+### `issue-finder.assess`
 
 用途：评估单个 issue 是否值得准备，不创建 workspace，不写 inbox，不写 handoff。
 
@@ -277,8 +277,8 @@ pub enum PatchbayContentItem {
 
 ```json
 {
-  "kind": "patchbay_tool_output",
-  "tool": "patchbay.assess",
+  "kind": "issue_finder_tool_output",
+  "tool": "issue-finder.assess",
   "status": "ok",
   "issue": {},
   "assessment": {
@@ -305,7 +305,7 @@ pub enum PatchbayContentItem {
 }
 ```
 
-### `patchbay.prepare`
+### `issue-finder.prepare`
 
 用途：在 gate 控制下准备 workspace 和 handoff。
 
@@ -339,8 +339,8 @@ blocked output：
 
 ```json
 {
-  "kind": "patchbay_tool_output",
-  "tool": "patchbay.prepare",
+  "kind": "issue_finder_tool_output",
+  "tool": "issue-finder.prepare",
   "status": "blocked_by_gate",
   "success": true,
   "issue": {},
@@ -361,8 +361,8 @@ prepared output：
 
 ```json
 {
-  "kind": "patchbay_tool_output",
-  "tool": "patchbay.prepare",
+  "kind": "issue_finder_tool_output",
+  "tool": "issue-finder.prepare",
   "status": "prepared",
   "success": true,
   "issue": {},
@@ -404,7 +404,7 @@ bypass output 额外包含：
 - bypass reason 应写入 handoff warning 或 prepare event，避免静默绕过。
 - `prepare` 仍不得提交、推送、创建 PR。
 
-### `patchbay.read_context`
+### `issue-finder.read_context`
 
 用途：按需读取已准备 handoff 的指定上下文片段。
 
@@ -459,8 +459,8 @@ probe_json    -> probe.json
 
 ```json
 {
-  "kind": "patchbay_tool_output",
-  "tool": "patchbay.read_context",
+  "kind": "issue_finder_tool_output",
+  "tool": "issue-finder.read_context",
   "status": "ok",
   "handoffId": "2026-06-04-owner-repo-123",
   "section": "entry",
@@ -475,17 +475,17 @@ probe_json    -> probe.json
 新增命令：
 
 ```bash
-patchbay tools list
-patchbay tools call patchbay.scout --arguments '{"limit":10}'
-patchbay tools call patchbay.assess --arguments '{"issue":"owner/repo#123"}'
-patchbay tools call patchbay.prepare --arguments '{"issue":"owner/repo#123"}'
-patchbay tools call patchbay.read_context --arguments '{"handoffId":"...","section":"entry"}'
+issue-finder tools list
+issue-finder tools call issue-finder.scout --arguments '{"limit":10}'
+issue-finder tools call issue-finder.assess --arguments '{"issue":"owner/repo#123"}'
+issue-finder tools call issue-finder.prepare --arguments '{"issue":"owner/repo#123"}'
+issue-finder tools call issue-finder.read_context --arguments '{"handoffId":"...","section":"entry"}'
 ```
 
 可选 envelope 字段：
 
 ```bash
-patchbay tools call patchbay.scout \
+issue-finder tools call issue-finder.scout \
   --call-id call_123 \
   --turn-id turn_456 \
   --arguments '{"limit":10}'
@@ -495,11 +495,11 @@ patchbay tools call patchbay.scout \
 
 ```json
 {
-  "kind": "patchbay_tool_specs",
+  "kind": "issue_finder_tool_specs",
   "version": 1,
   "tools": [
     {
-      "namespace": "patchbay",
+      "namespace": "issue-finder",
       "name": "scout",
       "description": "...",
       "inputSchema": {},
@@ -509,7 +509,7 @@ patchbay tools call patchbay.scout \
 }
 ```
 
-`tools call` 输出完整 `PatchbayToolOutput` JSON。CLI adapter 不输出人类表格，避免破坏 agent 消费。
+`tools call` 输出完整 `IssueFinderToolOutput` JSON。CLI adapter 不输出人类表格，避免破坏 agent 消费。
 
 ## Gate Policy
 
@@ -564,7 +564,7 @@ matches!(
 变更点：
 
 - tool output 必须返回这些路径，不要求 agent 从 Markdown 中发现路径。
-- `context_pack.files[].defer_loading` 与 `patchbay.read_context` 的 section 概念保持一致。
+- `context_pack.files[].defer_loading` 与 `issue-finder.read_context` 的 section 概念保持一致。
 - bypass reason 应进入 handoff 或 prepare event。
 
 ## 错误语义
@@ -602,7 +602,7 @@ tool call 无法完成：
 
 ### 阶段 2：Scout/Assess Tools
 
-- `patchbay.scout` 调用现有 `workflow::scout`。
+- `issue-finder.scout` 调用现有 `workflow::scout`。
 - 新增可复用单 issue assessment workflow，供 `assess` 和 `prepare` 共用。
 - 输出 compact gate-aware candidate shape。
 
@@ -622,8 +622,8 @@ tool call 无法完成：
 
 ### 阶段 5：CLI Adapter
 
-- 新增 `patchbay tools list`。
-- 新增 `patchbay tools call <tool> --arguments <json>`。
+- 新增 `issue-finder tools list`。
+- 新增 `issue-finder tools call <tool> --arguments <json>`。
 - 支持 `--call-id` 和 `--turn-id`。
 - 保证 stdout 是单个 JSON object。
 
@@ -631,7 +631,7 @@ tool call 无法完成：
 
 新增集成测试：
 
-- `tools_list_outputs_stable_patchbay_specs`
+- `tools_list_outputs_stable_issue_finder_specs`
 - `tool_scout_returns_gate_aware_candidates`
 - `tool_assess_does_not_write_handoff_or_inbox`
 - `tool_prepare_blocks_niche_without_bypass`
@@ -653,10 +653,10 @@ tool call 无法完成：
 
 - `cargo test` 通过。
 - `cargo clippy --all-targets -- -D warnings` 通过。
-- `patchbay tools list` 输出四个 tool specs。
-- `patchbay tools call patchbay.scout --arguments '{"limit":5}'` 返回 category-first 候选。
-- `patchbay tools call patchbay.assess --arguments '{"issue":"owner/repo#123"}'` 返回完整 gate summary 且不写 handoff。
-- `patchbay tools call patchbay.prepare --arguments '{"issue":"owner/repo#123"}'` 对非 high-value 默认返回 `blocked_by_gate`。
+- `issue-finder tools list` 输出四个 tool specs。
+- `issue-finder tools call issue-finder.scout --arguments '{"limit":5}'` 返回 category-first 候选。
+- `issue-finder tools call issue-finder.assess --arguments '{"issue":"owner/repo#123"}'` 返回完整 gate summary 且不写 handoff。
+- `issue-finder tools call issue-finder.prepare --arguments '{"issue":"owner/repo#123"}'` 对非 high-value 默认返回 `blocked_by_gate`。
 - `allowGateBypass=true` 且 `bypassReason` 非空时可以 prepare，并在 output 中可见 bypass reason。
 - `read_context` 只能读固定 section。
 
@@ -664,7 +664,7 @@ tool call 无法完成：
 
 ### MCP Adapter
 
-当 v1 contract 稳定后，可将 `PatchbayToolSpec` 转成 MCP tool schema，并将 `PatchbayToolOutput` 转成 MCP `CallToolResult`。
+当 v1 contract 稳定后，可将 `IssueFinderToolSpec` 转成 MCP tool schema，并将 `IssueFinderToolOutput` 转成 MCP `CallToolResult`。
 
 ### Codex Dynamic Tool Adapter
 
@@ -672,7 +672,7 @@ tool call 无法完成：
 
 ```json
 {
-  "namespace": "patchbay",
+  "namespace": "issue-finder",
   "name": "scout",
   "description": "...",
   "inputSchema": {},
@@ -680,13 +680,13 @@ tool call 无法完成：
 }
 ```
 
-调用时将 Codex `DynamicToolCallRequest` 转成 `PatchbayToolInvocation`，再将 output 转成 `DynamicToolResponse.contentItems`。
+调用时将 Codex `DynamicToolCallRequest` 转成 `IssueFinderToolInvocation`，再将 output 转成 `DynamicToolResponse.contentItems`。
 
 ### Deferred Tool Search
 
 如果未来 tool 数量变多，可参考 Codex `tool_search`：
 
-- 默认只暴露 `patchbay.scout`、`patchbay.assess`、`patchbay.prepare`
+- 默认只暴露 `issue-finder.scout`、`issue-finder.assess`、`issue-finder.prepare`
 - 将 `read_context` 或更细粒度 evidence readers 标记为 deferred
 - agent 需要时再发现和加载
 

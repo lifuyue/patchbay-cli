@@ -5,7 +5,7 @@ use anyhow::Context;
 use serde::Deserialize;
 
 use crate::inbox;
-use crate::paths::PatchbayPaths;
+use crate::paths::IssueFinderPaths;
 use crate::tool_outputs::{read_context_structured_output, ReadContextStructuredOutput};
 
 const DEFAULT_CONTEXT_MAX_BYTES: usize = 12_000;
@@ -27,7 +27,7 @@ pub struct ReadContextToolArgs {
 }
 
 pub fn read_context_section(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     tool_name: &str,
     args: ReadContextToolArgs,
 ) -> Result<ReadContextStructuredOutput, ReadContextError> {

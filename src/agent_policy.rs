@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::probe::ProbePack;
 use crate::repo_scan::ValidationCommand;
 
-const POLICY_KIND: &str = "patchbay_agent_policy";
+const POLICY_KIND: &str = "issue_finder_agent_policy";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AgentPolicyManifest {
@@ -179,26 +179,26 @@ fn default_forbidden_commands() -> Vec<ForbiddenCommand> {
     vec![
         ForbiddenCommand {
             pattern: "install dependencies".to_string(),
-            reason: "Patchbay does not install dependencies or ask agents to install without user approval."
+            reason: "Issue Finder does not install dependencies or ask agents to install without user approval."
                 .to_string(),
         },
         ForbiddenCommand {
             pattern: "project-defined scripts".to_string(),
-            reason: "Patchbay detects scripts but does not run repository scripts during prepare."
+            reason: "Issue Finder detects scripts but does not run repository scripts during prepare."
                 .to_string(),
         },
         ForbiddenCommand {
             pattern: "commit, push, or create pull request".to_string(),
-            reason: "Patchbay prepares handoff artifacts only.".to_string(),
+            reason: "Issue Finder prepares handoff artifacts only.".to_string(),
         },
         ForbiddenCommand {
-            pattern: "modify Patchbay inbox or generated context files".to_string(),
+            pattern: "modify Issue Finder inbox or generated context files".to_string(),
             reason: "Generated handoff artifacts are protected context, not target source."
                 .to_string(),
         },
         ForbiddenCommand {
             pattern: "destructive filesystem changes".to_string(),
-            reason: "Destructive operations are outside Patchbay's preparation boundary."
+            reason: "Destructive operations are outside Issue Finder's preparation boundary."
                 .to_string(),
         },
     ]
@@ -206,7 +206,7 @@ fn default_forbidden_commands() -> Vec<ForbiddenCommand> {
 
 fn default_agent_constraints() -> Vec<String> {
     vec![
-        "Do not modify Patchbay inbox files.".to_string(),
+        "Do not modify Issue Finder inbox files.".to_string(),
         "Do not modify .git, .agents, .codex, or generated context files.".to_string(),
         "Ask the user before running commands that require network, dependency installation, tests, build, or lint.".to_string(),
     ]
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn protects_workspace_metadata_and_inbox_roots() {
         let workspace = Path::new("/tmp/workspace");
-        let inbox = Path::new("/tmp/patchbay/inbox/item");
+        let inbox = Path::new("/tmp/issue-finder/inbox/item");
         let policy = build_agent_policy(
             "handoff",
             workspace,
@@ -268,7 +268,7 @@ mod tests {
             .permission_profile
             .filesystem
             .protected_roots
-            .contains(&"/tmp/patchbay/inbox/item".to_string()));
+            .contains(&"/tmp/issue-finder/inbox/item".to_string()));
         assert_eq!(
             policy.commands.requires_user_approval[0].command,
             "cargo test"
@@ -281,7 +281,7 @@ mod tests {
     fn probe_pack(workspace: &Path) -> ProbePack {
         ProbePack {
             version: 1,
-            kind: "patchbay_probe_pack".to_string(),
+            kind: "issue_finder_probe_pack".to_string(),
             status: "completed".to_string(),
             started_at: "2026-06-04T00:00:00Z".to_string(),
             completed_at: "2026-06-04T00:00:01Z".to_string(),

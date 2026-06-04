@@ -1,9 +1,9 @@
 use chrono::Utc;
-use patchbay_cli::competition::CompetitionFacts;
-use patchbay_cli::config::ProfileConfig;
-use patchbay_cli::github::GitHubIssue;
-use patchbay_cli::github_enrichment::{EnrichedIssue, TimestampedSample};
-use patchbay_cli::value_scoring::{assess_issue, RecommendationCategory, RiskTag, ScoreBand};
+use issue_finder::competition::CompetitionFacts;
+use issue_finder::config::ProfileConfig;
+use issue_finder::github::GitHubIssue;
+use issue_finder::github_enrichment::{EnrichedIssue, TimestampedSample};
+use issue_finder::value_scoring::{assess_issue, RecommendationCategory, RiskTag, ScoreBand};
 use serde::Deserialize;
 
 const SAMPLES: &str = include_str!("fixtures/recommendation_quality/samples.json");
