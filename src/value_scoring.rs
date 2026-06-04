@@ -189,10 +189,7 @@ pub fn recommendation_category(
 }
 
 pub fn is_daily_prepare_candidate(assessment: &ValueAssessment) -> bool {
-    matches!(
-        assessment.recommendation_category,
-        RecommendationCategory::HighValueReady | RecommendationCategory::HighValueNeedsScoping
-    )
+    crate::prepare_gate::default_prepare_allowed(assessment.recommendation_category)
 }
 
 fn add_gate_risk_tags(

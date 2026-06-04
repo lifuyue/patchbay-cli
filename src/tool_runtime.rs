@@ -1,27 +1,28 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use anyhow::Context;
 use chrono::Utc;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::config::Config;
 use crate::github::GitHubIssue;
-use crate::inbox;
 use crate::paths::PatchbayPaths;
-use crate::report::PreparedReportItem;
-use crate::value_scoring::{
-    GateStatus, GateVerdict, RankedValueIssue, RecommendationCategory, ValueAssessment,
+use crate::prepare_gate::{prepare_gate_decision, PrepareGateDecision};
+use crate::tool_context::{read_context_section, ReadContextError, ReadContextToolArgs};
+use crate::tool_outputs::{
+    assess_structured_output, assessment_output, candidate_output, failure_output,
+    gate_bypass_output, handoff_output, issue_output, prepare_blocked_structured_output,
+    prepare_failed_structured_output, prepare_gate_output, prepare_prepared_structured_output,
+    readiness_output, scout_structured_output, to_value, AssessmentOutput, GateBypassOutput,
+    IssueOutput, PrepareGateOutput,
 };
-use crate::workflow::{self, PrepareOptions, PrepareOutcome};
+use crate::value_scoring::{RankedValueIssue, RecommendationCategory};
+use crate::workflow::{self, IssueSelector, PrepareOptions, PrepareOutcome};
 
 const TOOL_SCOUT: &str = "patchbay.scout";
 const TOOL_ASSESS: &str = "patchbay.assess";
 const TOOL_PREPARE: &str = "patchbay.prepare";
 const TOOL_READ_CONTEXT: &str = "patchbay.read_context";
-const DEFAULT_CONTEXT_MAX_BYTES: usize = 12_000;
-const CONTEXT_MAX_BYTES_LIMIT: usize = 50_000;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct PatchbayToolSpecsEnvelope {
@@ -82,6 +83,15 @@ type RuntimeResult<T> = std::result::Result<T, RuntimeFailure>;
 impl From<anyhow::Error> for RuntimeFailure {
     fn from(error: anyhow::Error) -> Self {
         Self::System(error)
+    }
+}
+
+impl From<ReadContextError> for RuntimeFailure {
+    fn from(error: ReadContextError) -> Self {
+        match error {
+            ReadContextError::InvalidArguments(message) => Self::InvalidArguments(message),
+            ReadContextError::System(error) => Self::System(error),
+        }
     }
 }
 
@@ -249,25 +259,14 @@ impl PatchbayToolRuntime {
                         != RecommendationCategory::FilteredLowDepth
             })
             .take(limit)
-            .map(candidate_json)
+            .map(candidate_output)
             .collect::<Vec<_>>();
-        let structured = json!({
-            "kind": "patchbay_tool_output",
-            "tool": TOOL_SCOUT,
-            "status": "ok",
-            "success": true,
-            "candidates": candidates,
-            "filteredCount": filtered_count,
-        });
+        let candidate_count = candidates.len();
         Ok(PatchbayToolOutput::success(
             invocation,
             "ok",
-            format!(
-                "Found {} candidates ({} filtered).",
-                candidates.len(),
-                filtered_count
-            ),
-            structured,
+            format!("Found {candidate_count} candidates ({filtered_count} filtered)."),
+            scout_structured_output(TOOL_SCOUT, candidates, filtered_count),
         ))
     }
 
@@ -276,21 +275,12 @@ impl PatchbayToolRuntime {
         invocation: &PatchbayToolInvocation,
     ) -> RuntimeResult<PatchbayToolOutput> {
         let args: AssessToolArgs = parse_arguments(&invocation.arguments)?;
-        let (issue, url) = issue_selector(args.issue, args.url)?;
-        let ranked =
-            workflow::assess_from_input(&self.paths, &self.config, issue, url, args.refresh)
-                .await
-                .map_err(RuntimeFailure::System)?;
+        let selector = issue_selector(args.issue, args.url)?;
+        let ranked = self.assess_selection(selector, args.refresh).await?;
         let issue_label = issue_label(&ranked.issue);
-        let structured = json!({
-            "kind": "patchbay_tool_output",
-            "tool": TOOL_ASSESS,
-            "status": "ok",
-            "success": true,
-            "issue": issue_json(&ranked.issue),
-            "assessment": assessment_json(&ranked),
-            "prepareGate": prepare_gate_json(&ranked.value_assessment),
-        });
+        let issue = issue_output(&ranked.issue);
+        let assessment = assessment_output(&ranked);
+        let prepare_gate = prepare_gate_output(&ranked.value_assessment);
         Ok(PatchbayToolOutput::success(
             invocation,
             "ok",
@@ -298,7 +288,7 @@ impl PatchbayToolRuntime {
                 "Assessed {issue_label}: {}.",
                 ranked.value_assessment.recommendation_category
             ),
-            structured,
+            assess_structured_output(TOOL_ASSESS, issue, assessment, prepare_gate),
         ))
     }
 
@@ -314,57 +304,47 @@ impl PatchbayToolRuntime {
             ));
         }
 
-        let (issue, url) = issue_selector(args.issue, args.url)?;
-        let ranked =
-            workflow::assess_from_input(&self.paths, &self.config, issue, url, args.refresh)
-                .await
-                .map_err(RuntimeFailure::System)?;
-        let category = ranked.value_assessment.recommendation_category;
-        if !prepare_default_allowed(category) {
-            let reasons = prepare_gate_reasons(&ranked.value_assessment);
-            if !args.allow_gate_bypass {
-                let structured = json!({
-                    "kind": "patchbay_tool_output",
-                    "tool": TOOL_PREPARE,
-                    "status": "blocked_by_gate",
-                    "success": true,
-                    "issue": issue_json(&ranked.issue),
-                    "assessment": assessment_json(&ranked),
-                    "prepareGate": blocked_prepare_gate_json(category, reasons),
-                });
-                return Ok(PatchbayToolOutput::success(
-                    invocation,
-                    "blocked_by_gate",
-                    format!(
-                        "Prepare blocked by gate for {}: {}.",
-                        issue_label(&ranked.issue),
-                        category
-                    ),
-                    structured,
-                ));
-            }
+        let selector = issue_selector(args.issue, args.url)?;
+        let ranked = self.assess_selection(selector, args.refresh).await?;
+        let issue = issue_output(&ranked.issue);
+        let assessment = assessment_output(&ranked);
+        let prepare_gate = prepare_gate_output(&ranked.value_assessment);
+        let decision = prepare_gate_decision(
+            &ranked.value_assessment,
+            args.allow_gate_bypass
+                .then_some(bypass_reason.as_deref())
+                .flatten(),
+        );
+
+        if let PrepareGateDecision::Blocked { .. } = &decision {
+            let structured =
+                prepare_blocked_structured_output(TOOL_PREPARE, issue, assessment, prepare_gate);
+            return Ok(PatchbayToolOutput::success(
+                invocation,
+                "blocked_by_gate",
+                format!(
+                    "Prepare blocked by gate for {}: {}.",
+                    issue_label(&ranked.issue),
+                    ranked.value_assessment.recommendation_category
+                ),
+                structured,
+            ));
         }
 
-        let gate_bypass = if prepare_default_allowed(category) {
-            None
-        } else {
-            Some((
-                category,
-                bypass_reason.expect("bypass reason was validated above"),
-            ))
+        let prepare_output = PrepareOutputParts {
+            issue_label: issue_label(&ranked.issue),
+            issue,
+            assessment,
+            prepare_gate,
         };
-        let issue = ranked.issue.clone();
-        let assessment = ranked.value_assessment.clone();
-        let assessment_payload = assessment_json(&ranked);
+        let gate_bypass = gate_bypass_output(&decision);
         let outcome = workflow::prepare_value_issue_with_options(
             &self.paths,
             &self.config,
             ranked,
             PrepareOptions {
                 explicit_prepare: true,
-                gate_bypass_reason: gate_bypass
-                    .as_ref()
-                    .map(|(_category, reason)| reason.clone()),
+                gate_bypass_reason: bypass_reason_for_prepare(&decision),
             },
         )
         .await
@@ -373,9 +353,7 @@ impl PatchbayToolRuntime {
         Ok(prepare_outcome_output(
             invocation,
             &self.paths,
-            &issue,
-            &assessment,
-            assessment_payload,
+            prepare_output,
             outcome,
             gate_bypass,
         ))
@@ -386,58 +364,23 @@ impl PatchbayToolRuntime {
         invocation: &PatchbayToolInvocation,
     ) -> RuntimeResult<PatchbayToolOutput> {
         let args: ReadContextToolArgs = parse_arguments(&invocation.arguments)?;
-        let section_path = section_relative_path(&args.section).ok_or_else(|| {
-            RuntimeFailure::InvalidArguments(format!(
-                "unsupported context section {}",
-                args.section
-            ))
-        })?;
-        let item =
-            inbox::find_item(&self.paths, &args.handoff_id).map_err(RuntimeFailure::System)?;
-        let handoff_json_path = PathBuf::from(&item.handoff_json_path);
-        let handoff_dir = handoff_json_path
-            .parent()
-            .context("inbox item has no handoff directory")
-            .map_err(RuntimeFailure::System)?;
-        let handoff_dir = canonicalize_existing(handoff_dir)?;
-        let target = canonicalize_existing(&handoff_dir.join(section_path))?;
-        if !target.starts_with(&handoff_dir) {
-            return Err(RuntimeFailure::InvalidArguments(
-                "context section resolves outside the handoff directory".to_string(),
-            ));
-        }
-
-        let max_bytes = args
-            .max_bytes
-            .unwrap_or(DEFAULT_CONTEXT_MAX_BYTES)
-            .min(CONTEXT_MAX_BYTES_LIMIT);
-        let bytes = fs::read(&target)
-            .with_context(|| format!("unable to read {}", target.display()))
-            .map_err(RuntimeFailure::System)?;
-        let truncated = bytes.len() > max_bytes;
-        let visible_bytes = if truncated {
-            &bytes[..max_bytes]
-        } else {
-            &bytes[..]
-        };
-        let content = String::from_utf8_lossy(visible_bytes).to_string();
-        let structured = json!({
-            "kind": "patchbay_tool_output",
-            "tool": TOOL_READ_CONTEXT,
-            "status": "ok",
-            "success": true,
-            "handoffId": args.handoff_id,
-            "section": args.section,
-            "path": target.to_string_lossy(),
-            "truncated": truncated,
-            "content": content,
-        });
+        let structured = read_context_section(&self.paths, TOOL_READ_CONTEXT, args)?;
         Ok(PatchbayToolOutput::success(
             invocation,
             "ok",
             "Read context section.",
-            structured,
+            to_value(structured),
         ))
+    }
+
+    async fn assess_selection(
+        &self,
+        selector: IssueSelector,
+        refresh: bool,
+    ) -> RuntimeResult<RankedValueIssue> {
+        workflow::assess_issue_selection(&self.paths, &self.config, selector, refresh)
+            .await
+            .map_err(RuntimeFailure::System)
     }
 }
 
@@ -481,279 +424,78 @@ pub fn default_call_id() -> String {
 fn prepare_outcome_output(
     invocation: &PatchbayToolInvocation,
     paths: &PatchbayPaths,
-    issue: &GitHubIssue,
-    assessment: &ValueAssessment,
-    assessment_payload: Value,
+    output: PrepareOutputParts,
     outcome: PrepareOutcome,
-    gate_bypass: Option<(RecommendationCategory, String)>,
+    gate_bypass: Option<GateBypassOutput>,
 ) -> PatchbayToolOutput {
     match outcome {
-        PrepareOutcome::Prepared(item) => prepared_output(
-            invocation,
-            paths,
-            issue,
-            assessment,
-            assessment_payload,
-            &item,
-            gate_bypass,
-        ),
+        PrepareOutcome::Prepared(item) => {
+            let dir = PathBuf::from(&item.handoff_json_path)
+                .parent()
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_else(|| paths.inbox_item_dir(&item.id).to_string_lossy().to_string());
+            let structured = prepare_prepared_structured_output(
+                TOOL_PREPARE,
+                output.issue,
+                output.assessment,
+                output.prepare_gate,
+                handoff_output(&item, dir),
+                readiness_output(&item),
+                gate_bypass,
+            );
+            PatchbayToolOutput::success(
+                invocation,
+                "prepared",
+                format!("Prepared {}.", item.id),
+                structured,
+            )
+        }
         PrepareOutcome::Failed(item) => {
-            let structured = json!({
-                "kind": "patchbay_tool_output",
-                "tool": TOOL_PREPARE,
-                "status": "prepare_failed",
-                "success": false,
-                "issue": issue_json(issue),
-                "assessment": assessment_payload,
-                "prepareGate": prepare_gate_json(assessment),
-                "failure": {
-                    "repoFullName": item.repo_full_name,
-                    "issueNumber": item.issue_number,
-                    "reason": item.reason,
-                },
-                "gateBypass": gate_bypass_json(gate_bypass.as_ref()),
-            });
+            let structured = prepare_failed_structured_output(
+                TOOL_PREPARE,
+                output.issue,
+                output.assessment,
+                output.prepare_gate,
+                failure_output(&item),
+                gate_bypass,
+            );
             PatchbayToolOutput::failure_with_structured(
                 invocation,
                 "prepare_failed",
-                "Preparation failed.",
+                format!(
+                    "Preparation failed for {}: {}.",
+                    output.issue_label, item.reason
+                ),
                 structured,
             )
         }
     }
 }
 
-fn prepared_output(
-    invocation: &PatchbayToolInvocation,
-    paths: &PatchbayPaths,
-    issue: &GitHubIssue,
-    assessment: &ValueAssessment,
-    assessment_payload: Value,
-    item: &PreparedReportItem,
-    gate_bypass: Option<(RecommendationCategory, String)>,
-) -> PatchbayToolOutput {
-    let dir = PathBuf::from(&item.handoff_json_path)
-        .parent()
-        .map(|path| path.to_string_lossy().to_string())
-        .unwrap_or_else(|| paths.inbox_item_dir(&item.id).to_string_lossy().to_string());
-    let structured = json!({
-        "kind": "patchbay_tool_output",
-        "tool": TOOL_PREPARE,
-        "status": "prepared",
-        "success": true,
-        "issue": issue_json(issue),
-        "assessment": assessment_payload,
-        "prepareGate": prepare_gate_json(assessment),
-        "handoff": {
-            "id": item.id,
-            "dir": dir,
-            "handoffJsonPath": item.handoff_json_path,
-            "handoffMarkdownPath": item.handoff_md_path,
-            "codexMarkdownPath": item.codex_md_path,
-            "agentPolicyPath": item.agent_policy_path,
-            "probeJsonPath": item.probe_json_path,
-            "prepareEventsPath": item.prepare_events_path,
-        },
-        "readiness": {
-            "score": item.readiness_score,
-            "band": item.readiness_band,
-        },
-        "gateBypass": gate_bypass_json(gate_bypass.as_ref()),
-    });
-    PatchbayToolOutput::success(
-        invocation,
-        "prepared",
-        format!("Prepared {}.", item.id),
-        structured,
-    )
+struct PrepareOutputParts {
+    issue_label: String,
+    issue: IssueOutput,
+    assessment: AssessmentOutput,
+    prepare_gate: PrepareGateOutput,
 }
 
-fn candidate_json(candidate: &RankedValueIssue) -> Value {
-    json!({
-        "issue": issue_json(&candidate.issue),
-        "category": candidate.value_assessment.recommendation_category.to_string(),
-        "rankScore": candidate.value_assessment.final_rank_score,
-        "scores": scores_json(&candidate.value_assessment),
-        "gates": gates_json(&candidate.value_assessment),
-        "riskTags": risk_tags_json(&candidate.value_assessment),
-        "missingEvidence": candidate.value_assessment.missing_evidence,
-    })
+fn bypass_reason_for_prepare(decision: &PrepareGateDecision) -> Option<String> {
+    match decision {
+        PrepareGateDecision::Bypassed { reason, .. } => Some(reason.clone()),
+        PrepareGateDecision::Allowed | PrepareGateDecision::Blocked { .. } => None,
+    }
 }
 
-fn assessment_json(candidate: &RankedValueIssue) -> Value {
-    json!({
-        "category": candidate.value_assessment.recommendation_category.to_string(),
-        "rankScore": candidate.value_assessment.final_rank_score,
-        "gates": gates_json(&candidate.value_assessment),
-        "scores": scores_json(&candidate.value_assessment),
-        "riskTags": risk_tags_json(&candidate.value_assessment),
-        "missingEvidence": candidate.value_assessment.missing_evidence,
-        "competition": {
-            "openPrRefs": candidate.enriched_issue.competition.open_pr_refs,
-            "closedPrRefs": candidate.enriched_issue.competition.closed_pr_refs,
-            "attemptComments": candidate.enriched_issue.competition.attempt_comments,
-            "claimComments": candidate.enriched_issue.competition.claim_comments,
-            "workingComments": candidate.enriched_issue.competition.working_comments,
-            "fixSubmittedComments": candidate.enriched_issue.competition.fix_submitted_comments,
-            "competitionPoints": candidate.enriched_issue.competition.competition_points,
-            "competitionBand": candidate.enriched_issue.competition.competition_band.to_string(),
-            "warnings": candidate.enriched_issue.competition.warnings,
-        }
-    })
-}
-
-fn issue_json(issue: &GitHubIssue) -> Value {
-    json!({
-        "repoFullName": issue.repo_full_name,
-        "number": issue.number,
-        "title": issue.title,
-        "url": issue.url,
-    })
+fn issue_selector(issue: Option<String>, url: Option<String>) -> RuntimeResult<IssueSelector> {
+    let selector = IssueSelector::new(normalized_optional(issue), normalized_optional(url));
+    selector
+        .issue_ref()
+        .map_err(|error| RuntimeFailure::InvalidArguments(error.to_string()))?;
+    Ok(selector)
 }
 
 fn issue_label(issue: &GitHubIssue) -> String {
     format!("{}#{}", issue.repo_full_name, issue.number)
-}
-
-fn scores_json(assessment: &ValueAssessment) -> Value {
-    json!({
-        "repoInfluence": assessment.scores.repo_influence_score,
-        "profileFit": assessment.scores.profile_fit_score,
-        "executionQuality": assessment.scores.execution_quality_score,
-        "maintainerSignal": assessment.scores.maintainer_signal_score,
-        "freshness": assessment.scores.freshness_score,
-        "risk": assessment.scores.risk_score,
-    })
-}
-
-fn gates_json(assessment: &ValueAssessment) -> Value {
-    json!({
-        "lowDepth": gate_json(&assessment.gates.low_depth),
-        "repoInfluence": gate_json(&assessment.gates.repo_influence),
-        "competition": gate_json(&assessment.gates.competition),
-        "profileFit": gate_json(&assessment.gates.profile_fit),
-    })
-}
-
-fn gate_json(gate: &GateVerdict) -> Value {
-    json!({
-        "status": gate.status.to_string(),
-        "band": gate.band.to_string(),
-        "reasons": gate.reasons,
-        "evidenceRefs": gate.evidence_refs,
-    })
-}
-
-fn risk_tags_json(assessment: &ValueAssessment) -> Vec<String> {
-    assessment
-        .risk_tags
-        .iter()
-        .map(ToString::to_string)
-        .collect()
-}
-
-fn prepare_gate_json(assessment: &ValueAssessment) -> Value {
-    let category = assessment.recommendation_category;
-    if prepare_default_allowed(category) {
-        json!({
-            "defaultAllowed": true,
-            "allowedCategories": allowed_prepare_categories(),
-            "requiresBypass": false,
-            "reasons": [],
-        })
-    } else {
-        blocked_prepare_gate_json(category, prepare_gate_reasons(assessment))
-    }
-}
-
-fn blocked_prepare_gate_json(category: RecommendationCategory, reasons: Vec<String>) -> Value {
-    json!({
-        "defaultAllowed": false,
-        "allowedCategories": allowed_prepare_categories(),
-        "requiresBypass": true,
-        "blockedCategory": category.to_string(),
-        "reasons": reasons,
-        "bypassAvailable": true,
-    })
-}
-
-fn gate_bypass_json(gate_bypass: Option<&(RecommendationCategory, String)>) -> Value {
-    match gate_bypass {
-        Some((category, reason)) => json!({
-            "allowed": true,
-            "reason": reason,
-            "originalBlockedCategory": category.to_string(),
-        }),
-        None => Value::Null,
-    }
-}
-
-fn prepare_default_allowed(category: RecommendationCategory) -> bool {
-    matches!(
-        category,
-        RecommendationCategory::HighValueReady | RecommendationCategory::HighValueNeedsScoping
-    )
-}
-
-fn allowed_prepare_categories() -> Vec<String> {
-    [
-        RecommendationCategory::HighValueReady,
-        RecommendationCategory::HighValueNeedsScoping,
-    ]
-    .into_iter()
-    .map(|category| category.to_string())
-    .collect()
-}
-
-fn prepare_gate_reasons(assessment: &ValueAssessment) -> Vec<String> {
-    let mut reasons = Vec::new();
-    collect_gate_reasons(&mut reasons, &assessment.gates.low_depth);
-    collect_gate_reasons(&mut reasons, &assessment.gates.repo_influence);
-    collect_gate_reasons(&mut reasons, &assessment.gates.competition);
-    collect_gate_reasons(&mut reasons, &assessment.gates.profile_fit);
-    if assessment.execution_score < 50 {
-        reasons.push(format!(
-            "Execution score is below prepare threshold ({})",
-            assessment.execution_score
-        ));
-    }
-    for tag in &assessment.risk_tags {
-        reasons.push(format!("Risk tag: {tag}"));
-    }
-    for item in &assessment.missing_evidence {
-        reasons.push(format!("Missing evidence: {item}"));
-    }
-    if reasons.is_empty() {
-        reasons.push(format!(
-            "Category {} is outside the default prepare gate",
-            assessment.recommendation_category
-        ));
-    }
-    reasons.sort();
-    reasons.dedup();
-    reasons
-}
-
-fn collect_gate_reasons(reasons: &mut Vec<String>, gate: &GateVerdict) {
-    if gate.status != GateStatus::Pass {
-        reasons.extend(gate.reasons.clone());
-    }
-}
-
-fn section_relative_path(section: &str) -> Option<&'static Path> {
-    match section {
-        "entry" => Some(Path::new("context/entry.md")),
-        "safety" => Some(Path::new("context/safety.md")),
-        "probe" => Some(Path::new("context/probe.md")),
-        "value" => Some(Path::new("context/value.md")),
-        "issue" => Some(Path::new("context/issue.md")),
-        "repo" => Some(Path::new("context/repo.md")),
-        "validation" => Some(Path::new("context/validation.md")),
-        "handoff_json" => Some(Path::new("handoff.json")),
-        "agent_policy" => Some(Path::new("agent-policy.json")),
-        "probe_json" => Some(Path::new("probe.json")),
-        _ => None,
-    }
 }
 
 fn parse_arguments<T>(arguments: &Value) -> RuntimeResult<T>
@@ -764,34 +506,10 @@ where
         .map_err(|error| RuntimeFailure::InvalidArguments(error.to_string()))
 }
 
-fn issue_selector(
-    issue: Option<String>,
-    url: Option<String>,
-) -> RuntimeResult<(Option<String>, Option<String>)> {
-    let issue = normalized_optional(issue);
-    let url = normalized_optional(url);
-    match (issue, url) {
-        (Some(issue), None) => Ok((Some(issue), None)),
-        (None, Some(url)) => Ok((None, Some(url))),
-        (Some(_), Some(_)) => Err(RuntimeFailure::InvalidArguments(
-            "pass either issue or url, not both".to_string(),
-        )),
-        (None, None) => Err(RuntimeFailure::InvalidArguments(
-            "pass issue or url".to_string(),
-        )),
-    }
-}
-
 fn normalized_optional(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-}
-
-fn canonicalize_existing(path: &Path) -> RuntimeResult<PathBuf> {
-    path.canonicalize()
-        .with_context(|| format!("unable to resolve {}", path.display()))
-        .map_err(RuntimeFailure::System)
 }
 
 fn tool_spec(
@@ -916,15 +634,6 @@ struct PrepareToolArgs {
     allow_gate_bypass: bool,
     #[serde(default)]
     bypass_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ReadContextToolArgs {
-    handoff_id: String,
-    section: String,
-    #[serde(default)]
-    max_bytes: Option<usize>,
 }
 
 #[cfg(test)]

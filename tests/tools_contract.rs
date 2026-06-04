@@ -14,7 +14,14 @@ use patchbay_cli::github::GitHubIssue;
 use patchbay_cli::handoff::WrittenHandoff;
 use patchbay_cli::inbox::{load_index, upsert_ready};
 use patchbay_cli::paths::PatchbayPaths;
+use patchbay_cli::prepare_gate::{
+    default_prepare_allowed, prepare_gate_decision, PrepareGateDecision,
+};
 use patchbay_cli::tool_runtime::{list_tool_specs, PatchbayToolInvocation, PatchbayToolRuntime};
+use patchbay_cli::value_scoring::{
+    is_daily_prepare_candidate, RecommendationCategory, ValueAssessment,
+};
+use patchbay_cli::workflow::{self, PrepareOutcome};
 use patchbay_cli::workspace::git_available;
 use tempfile::tempdir;
 
@@ -44,6 +51,56 @@ fn tools_list_outputs_stable_patchbay_specs() {
         ]
     );
     assert!(tools.iter().all(|tool| tool["inputSchema"].is_object()));
+}
+
+#[test]
+fn tools_call_invalid_arguments_emits_single_json_object() {
+    let output = Command::new(env!("CARGO_BIN_EXE_patchbay"))
+        .args([
+            "tools",
+            "call",
+            "patchbay.scout",
+            "--arguments",
+            "[]",
+            "--call-id",
+            "call_test",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.lines().count(), 1);
+    let value = serde_json::from_str::<serde_json::Value>(stdout.trim()).unwrap();
+    assert_eq!(value["call_id"], "call_test");
+    assert_eq!(value["success"], false);
+    assert_eq!(value["status"], "invalid_arguments");
+}
+
+#[test]
+fn daily_and_tool_prepare_gate_share_allowed_category_policy() {
+    for category in [
+        RecommendationCategory::HighValueReady,
+        RecommendationCategory::HighValueNeedsScoping,
+        RecommendationCategory::NicheButActionable,
+        RecommendationCategory::ContestedOrLowTrust,
+        RecommendationCategory::NeedsTriage,
+        RecommendationCategory::FilteredLowDepth,
+    ] {
+        let assessment = ValueAssessment {
+            category,
+            recommendation_category: category,
+            ..ValueAssessment::default()
+        };
+        assert_eq!(
+            is_daily_prepare_candidate(&assessment),
+            default_prepare_allowed(category)
+        );
+        let decision = prepare_gate_decision(&assessment, None);
+        assert_eq!(
+            matches!(decision, PrepareGateDecision::Allowed),
+            default_prepare_allowed(category)
+        );
+    }
 }
 
 #[tokio::test]
@@ -160,6 +217,20 @@ async fn tool_runtime_uses_mocked_github_and_applies_prepare_gate() {
     assert!(fs::read_to_string(handoff_json_path)
         .unwrap()
         .contains("Prepare gate bypass: Test bypass for niche issue"));
+
+    clone_into_workspace(&remote, &paths, "owner/ready");
+    let human_prepared = workflow::prepare_from_input(
+        &paths,
+        &Config::default(),
+        Some("owner/ready#1".to_string()),
+        None,
+    )
+    .await
+    .unwrap();
+    let PrepareOutcome::Prepared(human_item) = human_prepared else {
+        panic!("expected human prepare to prepare owner/ready");
+    };
+    assert!(PathBuf::from(&human_item.handoff_json_path).exists());
 
     let handoff_id = prepared.structured_content["handoff"]["id"]
         .as_str()
@@ -317,7 +388,7 @@ fn start_mock_tool_github() -> (String, thread::JoinHandle<()>) {
         let mut last_request_at = Instant::now();
         let mut served = 0usize;
         while started.elapsed() < Duration::from_secs(10) {
-            if served > 0 && last_request_at.elapsed() > Duration::from_millis(500) {
+            if served > 0 && last_request_at.elapsed() > Duration::from_secs(2) {
                 break;
             }
 
