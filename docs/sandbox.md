@@ -1,19 +1,19 @@
 # Sandbox & Approvals
 
-Patchbay does not implement an operating system sandbox or a model tool loop. It writes a handoff contract that downstream agent runtimes can read and enforce with their own sandbox and approval systems.
+Issue Finder does not implement an operating system sandbox or a model tool loop. It writes a handoff contract that downstream agent runtimes can read and enforce with their own sandbox and approval systems.
 
-## Patchbay Boundary
+## Issue Finder Boundary
 
-Patchbay may:
+Issue Finder may:
 
 - Read GitHub issue and repository metadata
 - Clone or fetch the target repository
-- Create or checkout a local Patchbay branch
+- Create or checkout a local Issue Finder branch
 - Scan repository files within bounded limits
 - Run fixed low-risk probes
-- Write Patchbay state under `~/.patchbay` or `PATCHBAY_HOME`
+- Write Issue Finder state under `~/.issue-finder` or `ISSUE_FINDER_HOME`
 
-Patchbay must not:
+Issue Finder must not:
 
 - Modify target repository source during prepare
 - Install dependencies
@@ -25,9 +25,9 @@ Patchbay must not:
 
 `agent-policy.json` uses three command categories:
 
-- `allowed_low_risk`: fixed read-only probes Patchbay already considered safe enough to run.
+- `allowed_low_risk`: fixed read-only probes Issue Finder already considered safe enough to run.
 - `requires_user_approval`: useful commands that may execute repository code, use dependencies, take time, or need network access.
-- `forbidden`: destructive or out-of-bound actions for Patchbay handoff consumption.
+- `forbidden`: destructive or out-of-bound actions for Issue Finder handoff consumption.
 
 Validation candidates such as `cargo test`, `npm test`, `pytest`, `go test ./...`, and `make test` are suggestions only. They are classified as `requires_user_approval`.
 
@@ -36,7 +36,7 @@ Validation candidates such as `cargo test`, `npm test`, `pytest`, `go test ./...
 The policy manifest protects:
 
 - Workspace metadata: `.git`, `.agents`, `.codex`
-- Patchbay inbox item directory
+- Issue Finder inbox item directory
 - Generated context files under the inbox item
 
 These paths are part of the handoff boundary. They are not target source files.

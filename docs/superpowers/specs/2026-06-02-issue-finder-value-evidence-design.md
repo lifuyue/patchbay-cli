@@ -1,8 +1,8 @@
-# Patchbay Value Evidence Design
+# Issue Finder Value Evidence Design
 
 ## Summary
 
-Patchbay should strengthen its core advantage as a local-first task preparation CLI by producing high-value, evidence-backed issue recommendations and handoff payloads. The next design step upgrades Patchbay from a lightweight `good first issue` ranker into a local decision engine that can explain why an issue is worth a developer's time and why an agent can act on it.
+Issue Finder should strengthen its core advantage as a local-first task preparation CLI by producing high-value, evidence-backed issue recommendations and handoff payloads. The next design step upgrades Issue Finder from a lightweight `good first issue` ranker into a local decision engine that can explain why an issue is worth a developer's time and why an agent can act on it.
 
 The first priority is:
 
@@ -18,7 +18,7 @@ LLM support remains optional. It may review and summarize evidence for display, 
 - Produce structured value signals with explicit evidence references.
 - Add a `value_assessment` and `evidence_pack` to `handoff.json`.
 - Keep the core scoring deterministic, local, and explainable.
-- Keep the first implementation within Patchbay's safety boundary: no target repo code edits, no validation command execution, no commits, pushes, or pull requests.
+- Keep the first implementation within Issue Finder's safety boundary: no target repo code edits, no validation command execution, no commits, pushes, or pull requests.
 
 ## Non-Goals
 
@@ -30,7 +30,7 @@ LLM support remains optional. It may review and summarize evidence for display, 
 
 ## Product Positioning
 
-Patchbay's competitive edge should be a local app logic layer that returns high-value information. A good handoff should answer:
+Issue Finder's competitive edge should be a local app logic layer that returns high-value information. A good handoff should answer:
 
 - Why is this issue worth doing?
 - Why is this repository worth attention?
@@ -243,7 +243,7 @@ Signals:
 
 ### Growth Momentum
 
-Patchbay must use official GitHub API data to compute growth. It should not scrape GitHub Trending in the first version.
+Issue Finder must use official GitHub API data to compute growth. It should not scrape GitHub Trending in the first version.
 
 Signals:
 
@@ -263,7 +263,7 @@ Evidence examples:
 - `repo:pushed_at`
 - `repo:created_at`
 
-The growth calculation is approximate when sampling is capped. Patchbay must report `growth_confidence` and caveats instead of presenting sampled growth as exact truth.
+The growth calculation is approximate when sampling is capped. Issue Finder must report `growth_confidence` and caveats instead of presenting sampled growth as exact truth.
 
 ### Opportunity Types
 
@@ -275,7 +275,7 @@ The growth calculation is approximate when sampling is capped. Patchbay must rep
 
 ## Command Behavior
 
-### `patchbay scout`
+### `issue-finder scout`
 
 Default behavior should use balanced enrichment.
 
@@ -299,7 +299,7 @@ Future optional flag:
 
 - `--fast`: skip enrichment and use only lightweight scoring.
 
-### `patchbay daily`
+### `issue-finder daily`
 
 Flow:
 
@@ -321,9 +321,9 @@ Daily report should become a high-value opportunity report:
 
 Single-issue failures continue to be recorded without stopping the full daily run.
 
-### `patchbay prepare owner/repo#123`
+### `issue-finder prepare owner/repo#123`
 
-Explicit prepare should still work even when a candidate has a low execution gate. In that case, Patchbay writes the risk clearly into the handoff warnings.
+Explicit prepare should still work even when a candidate has a low execution gate. In that case, Issue Finder writes the risk clearly into the handoff warnings.
 
 Flow:
 
@@ -384,11 +384,11 @@ Rules:
 - LLM output cannot modify recommendations.
 - LLM output cannot decide daily selection.
 - LLM review must cite existing `source_refs` where practical.
-- If the LLM cannot ground a statement in evidence, Patchbay records a warning.
+- If the LLM cannot ground a statement in evidence, Issue Finder records a warning.
 
 ## Caching and Request Budget
 
-Patchbay should preserve the 1-3 minute target by bounding enrichment.
+Issue Finder should preserve the 1-3 minute target by bounding enrichment.
 
 Cache files:
 
@@ -441,8 +441,8 @@ Integration tests:
 
 The feature is complete when:
 
-- `patchbay scout` can display enriched, evidence-backed value rankings.
-- `patchbay daily` selects high-value candidates using value score and execution gate.
+- `issue-finder scout` can display enriched, evidence-backed value rankings.
+- `issue-finder daily` selects high-value candidates using value score and execution gate.
 - `handoff.json` includes deterministic `value_assessment`.
 - `handoff.json` includes an agent-usable `evidence_pack`.
 - Growth opportunities are supported through official GitHub API-derived `growth_momentum`.

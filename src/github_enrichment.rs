@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::competition::{assess_competition, CompetitionFacts, TimelineIssueReference};
 use crate::config::Config;
 use crate::github::GitHubIssue;
-use crate::paths::{atomic_write, PatchbayPaths};
+use crate::paths::{atomic_write, IssueFinderPaths};
 
 const ENRICHMENT_CACHE_TTL_MINUTES: i64 = 45;
 const ENRICHMENT_HTTP_TIMEOUT: StdDuration = StdDuration::from_secs(10);
@@ -185,7 +185,7 @@ impl GitHubEnrichmentClient {
     pub fn new(config: &Config) -> Result<Self> {
         Self::with_api_base(
             config,
-            std::env::var("PATCHBAY_GITHUB_API_BASE")
+            std::env::var("ISSUE_FINDER_GITHUB_API_BASE")
                 .unwrap_or_else(|_| "https://api.github.com".to_string()),
         )
     }
@@ -193,7 +193,7 @@ impl GitHubEnrichmentClient {
     pub fn with_api_base(config: &Config, api_base_url: impl Into<String>) -> Result<Self> {
         Ok(Self {
             http: reqwest::Client::builder()
-                .user_agent("patchbay-cli")
+                .user_agent("issue-finder")
                 .timeout(ENRICHMENT_HTTP_TIMEOUT)
                 .build()?,
             token: config.github.token.clone(),
@@ -203,7 +203,7 @@ impl GitHubEnrichmentClient {
 
     pub async fn enrich_issue(
         &self,
-        paths: &PatchbayPaths,
+        paths: &IssueFinderPaths,
         issue: &GitHubIssue,
         refresh: bool,
     ) -> EnrichedIssue {
@@ -213,7 +213,7 @@ impl GitHubEnrichmentClient {
 
     pub async fn enrich_issue_with_options(
         &self,
-        paths: &PatchbayPaths,
+        paths: &IssueFinderPaths,
         issue: &GitHubIssue,
         refresh: bool,
         include_competition_timeline: bool,
@@ -693,7 +693,7 @@ fn competition_timeline_missing(enriched: &EnrichedIssue) -> bool {
 }
 
 fn load_cached_enrichment(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     issue: &GitHubIssue,
 ) -> Result<Option<EnrichedIssue>> {
     let path = paths.enrichment_cache_path(&issue.repo_full_name, issue.number);
@@ -712,7 +712,7 @@ fn load_cached_enrichment(
 }
 
 fn save_cached_enrichment(
-    paths: &PatchbayPaths,
+    paths: &IssueFinderPaths,
     issue: &GitHubIssue,
     enriched: &EnrichedIssue,
 ) -> Result<()> {

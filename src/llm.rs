@@ -64,7 +64,7 @@ async fn request_summary(config: &Config, handoff: &Handoff) -> Result<String> {
     let base_url = config.llm.base_url.trim_end_matches('/');
     let url = format!("{base_url}/chat/completions");
     let client = reqwest::Client::builder()
-        .user_agent("patchbay-cli")
+        .user_agent("issue-finder")
         .timeout(LLM_REQUEST_TIMEOUT)
         .build()?;
 
@@ -134,7 +134,7 @@ mod tests {
         let config = Config::default();
         let mut handoff = Handoff {
             version: 1,
-            kind: "patchbay_handoff".to_string(),
+            kind: "issue_finder_handoff".to_string(),
             id: "id".to_string(),
             created_at: "now".to_string(),
             issue: HandoffIssue {
@@ -149,7 +149,7 @@ mod tests {
             workspace: HandoffWorkspace {
                 path: String::new(),
                 default_branch: "main".to_string(),
-                branch: "patchbay/1-issue".to_string(),
+                branch: "issue-finder/1-issue".to_string(),
                 dirty: false,
             },
             context: HandoffContext {

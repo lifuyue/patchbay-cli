@@ -4,7 +4,7 @@ use crate::github::GitHubIssue;
 use crate::probe::ProbePack;
 use crate::workspace::PreparedWorkspace;
 
-const READINESS_KIND: &str = "patchbay_execution_readiness";
+const READINESS_KIND: &str = "issue_finder_execution_readiness";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExecutionReadiness {
@@ -83,7 +83,7 @@ fn workspace_state_axis(
         return axis(
             "workspace_state",
             40,
-            "Workspace has local changes; Patchbay did not overwrite them.",
+            "Workspace has local changes; Issue Finder did not overwrite them.",
         );
     }
 
@@ -114,7 +114,7 @@ fn workspace_state_axis(
         _ => axis(
             "workspace_state",
             60,
-            "Workspace is clean, but probe facts did not confirm the expected Patchbay branch.",
+            "Workspace is clean, but probe facts did not confirm the expected Issue Finder branch.",
         ),
     }
 }
@@ -311,7 +311,7 @@ mod tests {
         let workspace = workspace(false);
         let probe_pack = ProbePack {
             version: 1,
-            kind: "patchbay_probe_pack".to_string(),
+            kind: "issue_finder_probe_pack".to_string(),
             status: "completed".to_string(),
             started_at: Utc::now().to_rfc3339(),
             completed_at: Utc::now().to_rfc3339(),
@@ -319,7 +319,7 @@ mod tests {
             probes: Vec::new(),
             facts: ProbeFacts {
                 workspace_dirty: false,
-                current_branch: Some("patchbay/1-fix".to_string()),
+                current_branch: Some("issue-finder/1-fix".to_string()),
                 origin_url: Some("https://github.com/owner/repo.git".to_string()),
                 tracked_file_count: Some(2),
                 package_managers: vec!["cargo".to_string()],
@@ -364,7 +364,7 @@ mod tests {
             info: WorkspaceInfo {
                 path: "/tmp/workspace".to_string(),
                 default_branch: "main".to_string(),
-                branch: "patchbay/1-fix".to_string(),
+                branch: "issue-finder/1-fix".to_string(),
                 dirty,
             },
             scan: RepoScan {

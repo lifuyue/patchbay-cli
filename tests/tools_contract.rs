@@ -9,26 +9,28 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use patchbay_cli::config::Config;
-use patchbay_cli::github::GitHubIssue;
-use patchbay_cli::handoff::WrittenHandoff;
-use patchbay_cli::inbox::{load_index, upsert_ready};
-use patchbay_cli::paths::PatchbayPaths;
-use patchbay_cli::prepare_gate::{
+use issue_finder::config::Config;
+use issue_finder::github::GitHubIssue;
+use issue_finder::handoff::WrittenHandoff;
+use issue_finder::inbox::{load_index, upsert_ready};
+use issue_finder::paths::IssueFinderPaths;
+use issue_finder::prepare_gate::{
     default_prepare_allowed, prepare_gate_decision, PrepareGateDecision,
 };
-use patchbay_cli::tool_runtime::{list_tool_specs, PatchbayToolInvocation, PatchbayToolRuntime};
-use patchbay_cli::value_scoring::{
+use issue_finder::tool_runtime::{
+    list_tool_specs, IssueFinderToolInvocation, IssueFinderToolRuntime,
+};
+use issue_finder::value_scoring::{
     is_daily_prepare_candidate, RecommendationCategory, ValueAssessment,
 };
-use patchbay_cli::workflow::{self, PrepareOutcome};
-use patchbay_cli::workspace::git_available;
+use issue_finder::workflow::{self, PrepareOutcome};
+use issue_finder::workspace::git_available;
 use tempfile::tempdir;
 
 #[test]
-fn tools_list_outputs_stable_patchbay_specs() {
+fn tools_list_outputs_stable_issue_finder_specs() {
     let specs = serde_json::to_value(list_tool_specs()).unwrap();
-    assert_eq!(specs["kind"], "patchbay_tool_specs");
+    assert_eq!(specs["kind"], "issue_finder_tool_specs");
     assert_eq!(specs["version"], 1);
     let tools = specs["tools"].as_array().unwrap();
     let names = tools
@@ -44,10 +46,10 @@ fn tools_list_outputs_stable_patchbay_specs() {
     assert_eq!(
         names,
         vec![
-            "patchbay.scout",
-            "patchbay.assess",
-            "patchbay.prepare",
-            "patchbay.read_context"
+            "issue-finder.scout",
+            "issue-finder.assess",
+            "issue-finder.prepare",
+            "issue-finder.read_context"
         ]
     );
     assert!(tools.iter().all(|tool| tool["inputSchema"].is_object()));
@@ -55,11 +57,11 @@ fn tools_list_outputs_stable_patchbay_specs() {
 
 #[test]
 fn tools_call_invalid_arguments_emits_single_json_object() {
-    let output = Command::new(env!("CARGO_BIN_EXE_patchbay"))
+    let output = Command::new(env!("CARGO_BIN_EXE_issue-finder"))
         .args([
             "tools",
             "call",
-            "patchbay.scout",
+            "issue-finder.scout",
             "--arguments",
             "[]",
             "--call-id",
@@ -110,17 +112,17 @@ async fn tool_runtime_uses_mocked_github_and_applies_prepare_gate() {
     }
 
     let (base_url, handle) = start_mock_tool_github();
-    std::env::set_var("PATCHBAY_GITHUB_API_BASE", &base_url);
+    std::env::set_var("ISSUE_FINDER_GITHUB_API_BASE", &base_url);
     let _env_guard = EnvGuard;
 
     let dir = tempdir().unwrap();
     let paths = test_paths(dir.path());
     paths.ensure_layout().unwrap();
-    let runtime = PatchbayToolRuntime::new(paths.clone(), Config::default());
+    let runtime = IssueFinderToolRuntime::new(paths.clone(), Config::default());
 
     let scout = runtime
         .execute(invocation(
-            "patchbay.scout",
+            "issue-finder.scout",
             r#"{"limit":5,"refresh":true,"includeFiltered":false}"#,
             "scout_call",
         ))
@@ -139,7 +141,7 @@ async fn tool_runtime_uses_mocked_github_and_applies_prepare_gate() {
 
     let assess = runtime
         .execute(invocation(
-            "patchbay.assess",
+            "issue-finder.assess",
             r#"{"issue":"owner/niche#1"}"#,
             "assess_call",
         ))
@@ -160,7 +162,7 @@ async fn tool_runtime_uses_mocked_github_and_applies_prepare_gate() {
 
     let blocked = runtime
         .execute(invocation(
-            "patchbay.prepare",
+            "issue-finder.prepare",
             r#"{"issue":"owner/niche#1"}"#,
             "blocked_call",
         ))
@@ -177,7 +179,7 @@ async fn tool_runtime_uses_mocked_github_and_applies_prepare_gate() {
 
     let missing_reason = runtime
         .execute(invocation(
-            "patchbay.prepare",
+            "issue-finder.prepare",
             r#"{"issue":"owner/niche#1","allowGateBypass":true,"bypassReason":" "}"#,
             "missing_reason_call",
         ))
@@ -189,7 +191,7 @@ async fn tool_runtime_uses_mocked_github_and_applies_prepare_gate() {
     clone_into_workspace(&remote, &paths, "owner/niche");
     let prepared = runtime
         .execute(invocation(
-            "patchbay.prepare",
+            "issue-finder.prepare",
             r#"{"issue":"owner/niche#1","allowGateBypass":true,"bypassReason":"Test bypass for niche issue"}"#,
             "prepared_call",
         ))
@@ -237,7 +239,7 @@ async fn tool_runtime_uses_mocked_github_and_applies_prepare_gate() {
         .unwrap();
     let context = runtime
         .execute(invocation(
-            "patchbay.read_context",
+            "issue-finder.read_context",
             &format!(r#"{{"handoffId":"{handoff_id}","section":"entry"}}"#),
             "read_call",
         ))
@@ -289,11 +291,11 @@ async fn tool_read_context_allows_fixed_sections_and_rejects_escape() {
         },
     )
     .unwrap();
-    let runtime = PatchbayToolRuntime::new(paths.clone(), Config::default());
+    let runtime = IssueFinderToolRuntime::new(paths.clone(), Config::default());
 
     let truncated = runtime
         .execute(invocation(
-            "patchbay.read_context",
+            "issue-finder.read_context",
             r#"{"handoffId":"handoff-1","section":"entry","maxBytes":3}"#,
             "truncate_call",
         ))
@@ -304,7 +306,7 @@ async fn tool_read_context_allows_fixed_sections_and_rejects_escape() {
 
     let traversal = runtime
         .execute(invocation(
-            "patchbay.read_context",
+            "issue-finder.read_context",
             r#"{"handoffId":"handoff-1","section":"../handoff.json"}"#,
             "traversal_call",
         ))
@@ -320,7 +322,7 @@ async fn tool_read_context_allows_fixed_sections_and_rejects_escape() {
         std::os::unix::fs::symlink(&outside, handoff_dir.join("context/repo.md")).unwrap();
         let escaped = runtime
             .execute(invocation(
-                "patchbay.read_context",
+                "issue-finder.read_context",
                 r#"{"handoffId":"handoff-1","section":"repo"}"#,
                 "escape_call",
             ))
@@ -333,12 +335,12 @@ struct EnvGuard;
 
 impl Drop for EnvGuard {
     fn drop(&mut self) {
-        std::env::remove_var("PATCHBAY_GITHUB_API_BASE");
+        std::env::remove_var("ISSUE_FINDER_GITHUB_API_BASE");
     }
 }
 
-fn invocation(tool: &str, arguments: &str, call_id: &str) -> PatchbayToolInvocation {
-    PatchbayToolInvocation::from_json_arguments(
+fn invocation(tool: &str, arguments: &str, call_id: &str) -> IssueFinderToolInvocation {
+    IssueFinderToolInvocation::from_json_arguments(
         tool.to_string(),
         arguments,
         Some(call_id.to_string()),
@@ -347,14 +349,14 @@ fn invocation(tool: &str, arguments: &str, call_id: &str) -> PatchbayToolInvocat
     .unwrap()
 }
 
-fn test_paths(root: &Path) -> PatchbayPaths {
-    PatchbayPaths {
-        home: root.join("patchbay-home"),
-        config: root.join("patchbay-home/config.toml"),
-        cache_dir: root.join("patchbay-home/cache"),
-        workspaces_dir: root.join("patchbay-home/workspaces"),
-        inbox_dir: root.join("patchbay-home/inbox"),
-        reports_dir: root.join("patchbay-home/reports"),
+fn test_paths(root: &Path) -> IssueFinderPaths {
+    IssueFinderPaths {
+        home: root.join("issue-finder-home"),
+        config: root.join("issue-finder-home/config.toml"),
+        cache_dir: root.join("issue-finder-home/cache"),
+        workspaces_dir: root.join("issue-finder-home/workspaces"),
+        inbox_dir: root.join("issue-finder-home/inbox"),
+        reports_dir: root.join("issue-finder-home/reports"),
     }
 }
 
@@ -642,9 +644,9 @@ fn create_remote_repo(root: &Path) -> PathBuf {
         &source,
         &[
             "-c",
-            "user.name=Patchbay",
+            "user.name=Issue Finder",
             "-c",
-            "user.email=patchbay@example.invalid",
+            "user.email=issue-finder@example.invalid",
             "commit",
             "-m",
             "initial",
@@ -668,7 +670,7 @@ fn create_remote_repo(root: &Path) -> PathBuf {
     remote
 }
 
-fn clone_into_workspace(remote: &Path, paths: &PatchbayPaths, repo_full_name: &str) {
+fn clone_into_workspace(remote: &Path, paths: &IssueFinderPaths, repo_full_name: &str) {
     let workspace = paths.workspace_path_for(repo_full_name);
     fs::create_dir_all(workspace.parent().unwrap()).unwrap();
     run_git(

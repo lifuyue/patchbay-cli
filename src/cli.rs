@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "patchbay")]
+#[command(name = "issue-finder")]
 #[command(about = "Local-first handoff prep for developers using coding agents")]
 #[command(version)]
 pub struct Cli {
@@ -11,7 +11,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Initialize Patchbay config and local state directories.
+    /// Initialize Issue Finder config and local state directories.
     Init(InitArgs),
     /// Discover and rank good-first-issue tasks.
     Scout(ScoutArgs),
@@ -25,7 +25,7 @@ pub enum Command {
     Daily(DailyArgs),
     /// Display local daily reports.
     Report(ReportArgs),
-    /// List and call Patchbay's JSON tool contract.
+    /// List and call Issue Finder's JSON tool contract.
     Tools(ToolsArgs),
     /// Check local readiness.
     Doctor,
@@ -114,15 +114,15 @@ pub struct ToolsArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum ToolsCommand {
-    /// Print Patchbay tool specs as JSON.
+    /// Print Issue Finder tool specs as JSON.
     List,
-    /// Call one Patchbay tool with a JSON object argument payload.
+    /// Call one Issue Finder tool with a JSON object argument payload.
     Call(ToolsCallArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct ToolsCallArgs {
-    /// Tool name, for example patchbay.scout.
+    /// Tool name, for example issue-finder.scout.
     pub tool: String,
     /// Tool arguments as a JSON object.
     #[arg(long)]

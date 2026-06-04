@@ -1,12 +1,12 @@
 use chrono::{Duration, Utc};
-use patchbay_cli::competition::CompetitionFacts;
-use patchbay_cli::config::ProfileConfig;
-use patchbay_cli::github::GitHubIssue;
-use patchbay_cli::github_enrichment::{EnrichedIssue, TimestampedSample};
-use patchbay_cli::value_scoring::{
+use issue_finder::competition::CompetitionFacts;
+use issue_finder::config::ProfileConfig;
+use issue_finder::github::GitHubIssue;
+use issue_finder::github_enrichment::{EnrichedIssue, TimestampedSample};
+use issue_finder::value_scoring::{
     aggregate_signals, assess_issue, GateStatus, RecommendationCategory, RiskTag, ScoreBand,
 };
-use patchbay_cli::value_signals::{SignalAxis, ValueSignal, ValueSignalKind};
+use issue_finder::value_signals::{SignalAxis, ValueSignal, ValueSignalKind};
 
 #[test]
 fn high_influence_and_high_execution_classifies_high_value_ready() {

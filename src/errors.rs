@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum PatchbayError {
+pub enum IssueFinderError {
     #[error("invalid issue reference; expected owner/repo#123 or a GitHub issue URL")]
     InvalidIssueReference,
 
@@ -11,7 +11,7 @@ pub enum PatchbayError {
     #[error("GitHub returned an unexpected response: {0}")]
     GitHubResponse(String),
 
-    #[error("Patchbay configuration was not found. Run `patchbay init` first.")]
+    #[error("Issue Finder configuration was not found. Run `issue-finder init` first.")]
     MissingConfig,
 
     #[error("inbox item not found: {0}")]
@@ -21,4 +21,4 @@ pub enum PatchbayError {
     GitCommandFailed { command: String, stderr: String },
 }
 
-pub type Result<T> = std::result::Result<T, PatchbayError>;
+pub type Result<T> = std::result::Result<T, IssueFinderError>;

@@ -1,13 +1,13 @@
 [package]
-name = "patchbay-cli"
+name = "issue-finder"
 version = "0.1.0"
 edition = "2021"
 description = "Local-first handoff prep for developers using coding agents"
 license = "MIT"
-repository = "https://github.com/lifuyue/patchbay-cli"
+repository = "https://github.com/lifuyue/issue-finder"
 
 [[bin]]
-name = "patchbay"
+name = "issue-finder"
 path = "src/main.rs"
 
 [dependencies]

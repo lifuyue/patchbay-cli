@@ -121,11 +121,11 @@ async fn request_review(
 
     let base_url = config.llm.base_url.trim_end_matches('/');
     let client = reqwest::Client::builder()
-        .user_agent("patchbay-cli")
+        .user_agent("issue-finder")
         .timeout(LLM_REVIEW_TIMEOUT)
         .build()?;
     let prompt = format!(
-        "Review this Patchbay evidence package for display only. Do not change scores or recommendation categories.\nRepo issue: {}#{}\nTitle: {}\nFinal rank score: {}\nCategory: {}\nAttention score: {}\nExecution score: {}\nRisk penalty: {}\nSource refs: {}\nEvidence JSON: {}",
+        "Review this Issue Finder evidence package for display only. Do not change scores or recommendation categories.\nRepo issue: {}#{}\nTitle: {}\nFinal rank score: {}\nCategory: {}\nAttention score: {}\nExecution score: {}\nRisk penalty: {}\nSource refs: {}\nEvidence JSON: {}",
         issue.repo_full_name,
         issue.number,
         issue.title,

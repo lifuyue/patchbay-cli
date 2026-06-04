@@ -1,13 +1,13 @@
 # Execution Policy
 
-Patchbay execution policy is a manifest, not an executor. `agent-policy.json` describes what downstream agents may consider safe, what needs user approval, and what is outside the handoff boundary.
+Issue Finder execution policy is a manifest, not an executor. `agent-policy.json` describes what downstream agents may consider safe, what needs user approval, and what is outside the handoff boundary.
 
 ## Manifest Shape
 
 ```json
 {
   "version": 1,
-  "kind": "patchbay_agent_policy",
+  "kind": "issue_finder_agent_policy",
   "handoff_id": "2026-06-04-owner__repo-123",
   "permission_profile": {
     "filesystem": {
@@ -28,19 +28,19 @@ Patchbay execution policy is a manifest, not an executor. `agent-policy.json` de
 
 ## Filesystem Policy
 
-- `read_roots`: the prepared workspace and Patchbay inbox item.
+- `read_roots`: the prepared workspace and Issue Finder inbox item.
 - `write_roots`: the prepared workspace.
-- `protected_roots`: workspace metadata and Patchbay-generated handoff files.
+- `protected_roots`: workspace metadata and Issue Finder-generated handoff files.
 
-`write_roots` is descriptive. It tells a downstream agent where task work belongs, but Patchbay itself does not edit target source during prepare.
+`write_roots` is descriptive. It tells a downstream agent where task work belongs, but Issue Finder itself does not edit target source during prepare.
 
 ## Network Policy
 
-Network is always represented as `requires_user_approval`. Patchbay does not ask downstream agents to perform networked setup or validation automatically.
+Network is always represented as `requires_user_approval`. Issue Finder does not ask downstream agents to perform networked setup or validation automatically.
 
 ## Command Policy
 
-Allowed low-risk commands are concrete argv arrays built by Patchbay, for example:
+Allowed low-risk commands are concrete argv arrays built by Issue Finder, for example:
 
 ```json
 {
@@ -59,4 +59,4 @@ Approval-required commands are plain command strings from repository detection, 
 }
 ```
 
-Forbidden entries are pattern-level boundaries such as dependency installation, project-defined scripts, commits, pushes, pull requests, Patchbay inbox edits, and destructive filesystem changes.
+Forbidden entries are pattern-level boundaries such as dependency installation, project-defined scripts, commits, pushes, pull requests, Issue Finder inbox edits, and destructive filesystem changes.

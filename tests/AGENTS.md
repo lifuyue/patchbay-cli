@@ -8,11 +8,11 @@
 
 ## 隔离规则
 
-测试必须稳定、确定，并且与开发者机器隔离。优先使用 `tempfile`、显式构造的 `PatchbayPaths`、本地 mock 服务和有作用域的环境变量 guard。不要依赖真实的 `~/.patchbay`、GitHub、LLM 服务、token、用户 workspace 或外部网络。
+测试必须稳定、确定，并且与开发者机器隔离。优先使用 `tempfile`、显式构造的 `IssueFinderPaths`、本地 mock 服务和有作用域的环境变量 guard。不要依赖真实的 `~/.issue-finder`、GitHub、LLM 服务、token、用户 workspace 或外部网络。
 
 ## Mock 指南
 
-GitHub 和 LLM 相关工作流优先使用进程内 TCP mock server。响应内容应保持小而稳定，并且只服务当前测试关注的行为。设置 `PATCHBAY_GITHUB_API_BASE` 等环境变量时，必须用 guard 在测试结束后清理，避免影响后续测试。
+GitHub 和 LLM 相关工作流优先使用进程内 TCP mock server。响应内容应保持小而稳定，并且只服务当前测试关注的行为。设置 `ISSUE_FINDER_GITHUB_API_BASE` 等环境变量时，必须用 guard 在测试结束后清理，避免影响后续测试。
 
 ## Tool Contract 测试
 

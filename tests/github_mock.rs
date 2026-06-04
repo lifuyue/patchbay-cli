@@ -5,18 +5,18 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use patchbay_cli::config::Config;
-use patchbay_cli::paths::PatchbayPaths;
-use patchbay_cli::workflow;
+use issue_finder::config::Config;
+use issue_finder::paths::IssueFinderPaths;
+use issue_finder::workflow;
 use tempfile::tempdir;
 
 #[tokio::test]
 async fn scout_uses_mocked_github_search_responses() {
     let (base_url, handle) = start_mock_github();
-    std::env::set_var("PATCHBAY_GITHUB_API_BASE", &base_url);
+    std::env::set_var("ISSUE_FINDER_GITHUB_API_BASE", &base_url);
 
     let dir = tempdir().unwrap();
-    let paths = PatchbayPaths {
+    let paths = IssueFinderPaths {
         home: dir.path().to_path_buf(),
         config: dir.path().join("config.toml"),
         cache_dir: dir.path().join("cache"),
@@ -28,7 +28,7 @@ async fn scout_uses_mocked_github_search_responses() {
 
     let ranked = workflow::scout(&paths, &config, 10, true).await.unwrap();
 
-    std::env::remove_var("PATCHBAY_GITHUB_API_BASE");
+    std::env::remove_var("ISSUE_FINDER_GITHUB_API_BASE");
     handle.join().unwrap();
 
     assert_eq!(ranked.len(), 1);

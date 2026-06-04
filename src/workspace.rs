@@ -4,9 +4,9 @@ use std::process::Command;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::errors::PatchbayError;
+use crate::errors::IssueFinderError;
 use crate::github::GitHubIssue;
-use crate::paths::PatchbayPaths;
+use crate::paths::IssueFinderPaths;
 use crate::repo_scan::{scan_repository, RepoScan};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -24,7 +24,10 @@ pub struct PreparedWorkspace {
     pub warnings: Vec<String>,
 }
 
-pub fn prepare_workspace(paths: &PatchbayPaths, issue: &GitHubIssue) -> Result<PreparedWorkspace> {
+pub fn prepare_workspace(
+    paths: &IssueFinderPaths,
+    issue: &GitHubIssue,
+) -> Result<PreparedWorkspace> {
     let workspace_path = paths.workspace_path_for(&issue.repo_full_name);
     let mut warnings = Vec::new();
 
@@ -43,13 +46,13 @@ pub fn prepare_workspace(paths: &PatchbayPaths, issue: &GitHubIssue) -> Result<P
         true
     });
 
-    let branch = patchbay_branch_name(issue);
+    let branch = issue_finder_branch_name(issue);
     if dirty {
         warnings.push(
-            "Workspace has local changes; Patchbay did not reset or overwrite it".to_string(),
+            "Workspace has local changes; Issue Finder did not reset or overwrite it".to_string(),
         );
     } else {
-        checkout_patchbay_branch(&workspace_path, &default_branch, &branch)?;
+        checkout_issue_finder_branch(&workspace_path, &default_branch, &branch)?;
     }
 
     let scan = scan_repository(&workspace_path, issue);
@@ -67,12 +70,12 @@ pub fn prepare_workspace(paths: &PatchbayPaths, issue: &GitHubIssue) -> Result<P
     })
 }
 
-pub fn patchbay_branch_name(issue: &GitHubIssue) -> String {
+pub fn issue_finder_branch_name(issue: &GitHubIssue) -> String {
     let slug = slugify(&issue.title);
     if slug.is_empty() {
-        format!("patchbay/{}-issue", issue.number)
+        format!("issue-finder/{}-issue", issue.number)
     } else {
-        format!("patchbay/{}-{slug}", issue.number)
+        format!("issue-finder/{}-{slug}", issue.number)
     }
 }
 
@@ -125,7 +128,7 @@ fn is_dirty(path: &Path) -> Result<bool> {
         .is_empty())
 }
 
-fn checkout_patchbay_branch(path: &Path, default_branch: &str, branch: &str) -> Result<()> {
+fn checkout_issue_finder_branch(path: &Path, default_branch: &str, branch: &str) -> Result<()> {
     let local_branch_ref = format!("refs/heads/{branch}");
     if run_git(Some(path), &["rev-parse", "--verify", &local_branch_ref]).is_ok() {
         run_git(Some(path), &["checkout", branch])?;
@@ -145,7 +148,7 @@ fn run_git(cwd: Option<&Path>, args: &[&str]) -> Result<()> {
         return Ok(());
     }
 
-    Err(PatchbayError::GitCommandFailed {
+    Err(IssueFinderError::GitCommandFailed {
         command: format!("git {}", args.join(" ")),
         stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
     }
@@ -158,7 +161,7 @@ fn run_git_capture(cwd: Option<&Path>, args: &[&str]) -> Result<String> {
         return Ok(String::from_utf8_lossy(&output.stdout).to_string());
     }
 
-    Err(PatchbayError::GitCommandFailed {
+    Err(IssueFinderError::GitCommandFailed {
         command: format!("git {}", args.join(" ")),
         stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
     }
@@ -198,11 +201,11 @@ fn slugify(input: &str) -> String {
 mod tests {
     use chrono::Utc;
 
-    use super::patchbay_branch_name;
+    use super::issue_finder_branch_name;
     use crate::github::GitHubIssue;
 
     #[test]
-    fn creates_patchbay_branch_name() {
+    fn creates_issue_finder_branch_name() {
         let issue = GitHubIssue {
             id: 1,
             number: 123,
@@ -219,8 +222,8 @@ mod tests {
         };
 
         assert_eq!(
-            patchbay_branch_name(&issue),
-            "patchbay/123-fix-accessible-button-label"
+            issue_finder_branch_name(&issue),
+            "issue-finder/123-fix-accessible-button-label"
         );
     }
 }

@@ -8,7 +8,7 @@ use crate::prepare_gate::{
 use crate::report::{FailedReportItem, PreparedReportItem};
 use crate::value_scoring::{GateVerdict, RankedValueIssue, ValueAssessment};
 
-const OUTPUT_KIND: &str = "patchbay_tool_output";
+const OUTPUT_KIND: &str = "issue_finder_tool_output";
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -446,7 +446,7 @@ pub fn read_context_structured_output(
 }
 
 pub fn to_value<T: Serialize>(value: T) -> Value {
-    serde_json::to_value(value).expect("Patchbay tool output DTO serialization should not fail")
+    serde_json::to_value(value).expect("Issue Finder tool output DTO serialization should not fail")
 }
 
 fn scores_output(assessment: &ValueAssessment) -> ScoresOutput {

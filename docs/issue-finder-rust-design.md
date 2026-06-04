@@ -1,16 +1,16 @@
-# Patchbay CLI Rust Design
+# Issue Finder Rust Design
 
 ## Summary
 
-Patchbay CLI is a Rust rewrite inspired by the current OpenMeta project, but it uses a new brand and a narrower product boundary. Patchbay is a local-first open-source task preparation tool for developers who use coding agents. It does not compete with Codex, Cursor, Claude Code, Cline, or similar tools. It prepares a clear task package before those tools begin work.
+Issue Finder is a Rust rewrite inspired by the current OpenMeta project, but it uses a new brand and a narrower product boundary. Issue Finder is a local-first open-source task preparation tool for developers who use coding agents. It does not compete with Codex, Cursor, Claude Code, Cline, or similar tools. It prepares a clear task package before those tools begin work.
 
-The command name is `patchbay`. The repository and package name should be `patchbay-cli`.
+The command name is `issue-finder`. The repository and package name should be `issue-finder`.
 
 Current implementation note: the original handoff model described here has been extended by the agent-safe preparation runtime. See [`../agent-safe-preparation-runtime.md`](../agent-safe-preparation-runtime.md) for the current artifact structure, policy manifest, safe probes, and readiness output.
 
 ## Product Positioning
 
-Patchbay is a local context and handoff layer for open-source contribution work. Its job is to find suitable `good first issue` tasks, prepare local repository context, create a structured handoff payload, store that payload in a local inbox, and produce a daily task report.
+Issue Finder is a local context and handoff layer for open-source contribution work. Its job is to find suitable `good first issue` tasks, prepare local repository context, create a structured handoff payload, store that payload in a local inbox, and produce a daily task report.
 
 The first version optimizes for a deterministic local workflow:
 
@@ -23,7 +23,7 @@ Discover good first issues
   -> Generate a daily report.md
 ```
 
-`handoff.json` is the canonical output. `handoff.md` is a lightweight human-readable summary. Newer prepared items also include `codex.md`, `agent-policy.json`, `probe.json`, `prepare-events.jsonl`, generated context files, and a local `patchbay-cli` skill.
+`handoff.json` is the canonical output. `handoff.md` is a lightweight human-readable summary. Newer prepared items also include `codex.md`, `agent-policy.json`, `probe.json`, `prepare-events.jsonl`, generated context files, and a local `issue-finder` skill.
 
 ## Goals
 
@@ -57,19 +57,19 @@ Discover good first issues
 The first version has a complete but restrained command surface:
 
 ```bash
-patchbay init
-patchbay scout
-patchbay prepare owner/repo#123
-patchbay handoff <inbox-id>
-patchbay inbox
-patchbay daily
-patchbay report
-patchbay doctor
+issue-finder init
+issue-finder scout
+issue-finder prepare owner/repo#123
+issue-finder handoff <inbox-id>
+issue-finder inbox
+issue-finder daily
+issue-finder report
+issue-finder doctor
 ```
 
-### `patchbay init`
+### `issue-finder init`
 
-Initializes local configuration and creates the local Patchbay directory structure.
+Initializes local configuration and creates the local Issue Finder directory structure.
 
 It captures:
 
@@ -82,38 +82,38 @@ It captures:
 The config file is written to:
 
 ```text
-~/.patchbay/config.toml
+~/.issue-finder/config.toml
 ```
 
-### `patchbay scout`
+### `issue-finder scout`
 
 Discovers and ranks `good first issue` tasks.
 
 Example usage:
 
 ```bash
-patchbay scout --limit 20
-patchbay scout --refresh
+issue-finder scout --limit 20
+issue-finder scout --refresh
 ```
 
 `scout` only discovers and displays candidates. It does not clone repositories and does not generate handoff payloads.
 
-### `patchbay prepare`
+### `issue-finder prepare`
 
 Prepares one issue and writes it to the inbox.
 
 Example usage:
 
 ```bash
-patchbay prepare owner/repo#123
-patchbay prepare --url https://github.com/owner/repo/issues/123
+issue-finder prepare owner/repo#123
+issue-finder prepare --url https://github.com/owner/repo/issues/123
 ```
 
 The command:
 
 - Fetches issue details if needed.
 - Clones or fetches the repository workspace.
-- Creates or reuses a Patchbay branch.
+- Creates or reuses a Issue Finder branch.
 - Scans repository structure.
 - Detects candidate files.
 - Detects suggested validation commands.
@@ -121,31 +121,31 @@ The command:
 - Renders `handoff.md`.
 - Upserts the inbox index.
 
-### `patchbay handoff`
+### `issue-finder handoff`
 
 Displays or prints an existing handoff.
 
 Example usage:
 
 ```bash
-patchbay handoff <inbox-id>
-patchbay handoff <inbox-id> --json
-patchbay handoff <inbox-id> --print
+issue-finder handoff <inbox-id>
+issue-finder handoff <inbox-id> --json
+issue-finder handoff <inbox-id> --print
 ```
 
 The JSON output is the authoritative payload.
 
-### `patchbay inbox`
+### `issue-finder inbox`
 
 Lists the local inbox and supports light status management.
 
 Example usage:
 
 ```bash
-patchbay inbox
-patchbay inbox --json
-patchbay inbox archive <inbox-id>
-patchbay inbox done <inbox-id>
+issue-finder inbox
+issue-finder inbox --json
+issue-finder inbox archive <inbox-id>
+issue-finder inbox done <inbox-id>
 ```
 
 First-version inbox statuses are:
@@ -157,16 +157,16 @@ archived
 done
 ```
 
-### `patchbay daily`
+### `issue-finder daily`
 
 Runs the daily task preparation flow.
 
 Example usage:
 
 ```bash
-patchbay daily
-patchbay daily --top 5
-patchbay daily --refresh
+issue-finder daily
+issue-finder daily --top 5
+issue-finder daily --refresh
 ```
 
 The command:
@@ -181,20 +181,20 @@ scout
 
 Single-issue failures do not stop the full daily run. The report records both successful and failed preparations.
 
-### `patchbay report`
+### `issue-finder report`
 
 Displays local daily reports.
 
 Example usage:
 
 ```bash
-patchbay report
-patchbay report --date 2026-06-02
+issue-finder report
+issue-finder report --date 2026-06-02
 ```
 
 Reports are Markdown files. They are a simple local knowledge base, not a publishing surface.
 
-### `patchbay doctor`
+### `issue-finder doctor`
 
 Checks local readiness.
 
@@ -202,18 +202,18 @@ It verifies:
 
 - Git availability.
 - GitHub token presence and basic validity.
-- Patchbay config existence.
-- Patchbay directory permissions.
+- Issue Finder config existence.
+- Issue Finder directory permissions.
 - Workspace, inbox, cache, and report paths.
 - Optional LLM reachability when LLM is enabled.
 - Platform details relevant to future scheduler support.
 
 ## Local State Layout
 
-Patchbay stores local state under `~/.patchbay`.
+Issue Finder stores local state under `~/.issue-finder`.
 
 ```text
-~/.patchbay/
+~/.issue-finder/
   config.toml
   cache/
     github-issues.json
@@ -236,7 +236,7 @@ Patchbay stores local state under `~/.patchbay`.
     2026-06-02.md
 ```
 
-`PATCHBAY_HOME` can override `~/.patchbay` for tests, development, and advanced users.
+`ISSUE_FINDER_HOME` can override `~/.issue-finder` for tests, development, and advanced users.
 
 ## Configuration
 
@@ -262,7 +262,7 @@ api_key_env = ""
 model = "gpt-4o-mini"
 ```
 
-LLM settings are intentionally simple. The first version does not support provider presets, named profiles, or complex custom headers. If `api_key_env` is set, Patchbay reads the API key from that environment variable instead of requiring it in the config file.
+LLM settings are intentionally simple. The first version does not support provider presets, named profiles, or complex custom headers. If `api_key_env` is set, Issue Finder reads the API key from that environment variable instead of requiring it in the config file.
 
 ## Issue Discovery
 
@@ -284,7 +284,7 @@ Discovery filters:
 Discovery results are cached in:
 
 ```text
-~/.patchbay/cache/github-issues.json
+~/.issue-finder/cache/github-issues.json
 ```
 
 The default discovery cache TTL is 10 minutes. `--refresh` bypasses the cache.
@@ -311,7 +311,7 @@ The scoring module returns a ranked list and a short explanation for each score.
 Workspaces are stored under:
 
 ```text
-~/.patchbay/workspaces/owner__repo
+~/.issue-finder/workspaces/owner__repo
 ```
 
 Preparation steps:
@@ -319,13 +319,13 @@ Preparation steps:
 - Clone the repository if no local workspace exists.
 - Fetch the default remote if the workspace already exists.
 - Detect the default branch.
-- Create or reuse a branch named like `patchbay/123-short-title`.
+- Create or reuse a branch named like `issue-finder/123-short-title`.
 - Detect whether the workspace is dirty.
 - Scan repository files.
 - Detect candidate files.
 - Detect suggested validation commands.
 
-If the workspace is dirty, Patchbay does not reset or overwrite it. The handoff payload records a warning.
+If the workspace is dirty, Issue Finder does not reset or overwrite it. The handoff payload records a warning.
 
 Git operations should use a small Rust wrapper around the local `git` CLI for the first version. This keeps behavior close to what users expect from their own Git configuration, SSH setup, credential helpers, and proxy settings.
 
@@ -366,7 +366,7 @@ go.mod           -> go test ./...
 Makefile         -> make test when a test target is present
 ```
 
-Patchbay only suggests these commands in the handoff. It does not run them in the first version.
+Issue Finder only suggests these commands in the handoff. It does not run them in the first version.
 
 ## Handoff Payload
 
@@ -379,7 +379,7 @@ Example shape:
 ```json
 {
   "version": 1,
-  "kind": "patchbay_handoff",
+  "kind": "issue_finder_handoff",
   "id": "2026-06-02-owner__repo-123",
   "created_at": "2026-06-02T10:00:00Z",
   "issue": {
@@ -392,9 +392,9 @@ Example shape:
     "updated_at": "2026-06-02T09:00:00Z"
   },
   "workspace": {
-    "path": "/Users/example/.patchbay/workspaces/owner__repo",
+    "path": "/Users/example/.issue-finder/workspaces/owner__repo",
     "default_branch": "main",
-    "branch": "patchbay/123-fix-accessible-button-label",
+    "branch": "issue-finder/123-fix-accessible-button-label",
     "dirty": false
   },
   "context": {
@@ -444,8 +444,8 @@ Example shape:
 # Handoff: owner/repo#123
 
 - JSON payload: ./handoff.json
-- Workspace: /Users/example/.patchbay/workspaces/owner__repo
-- Branch: patchbay/123-fix-accessible-button-label
+- Workspace: /Users/example/.issue-finder/workspaces/owner__repo
+- Branch: issue-finder/123-fix-accessible-button-label
 - Suggested files: src/button.rs
 - Suggested validation: cargo test
 
@@ -470,8 +470,8 @@ Example:
       "title": "Fix accessible button label",
       "score": 82,
       "status": "ready",
-      "handoff_json_path": "/Users/example/.patchbay/inbox/2026-06-02-owner__repo-123/handoff.json",
-      "handoff_md_path": "/Users/example/.patchbay/inbox/2026-06-02-owner__repo-123/handoff.md",
+      "handoff_json_path": "/Users/example/.issue-finder/inbox/2026-06-02-owner__repo-123/handoff.json",
+      "handoff_md_path": "/Users/example/.issue-finder/inbox/2026-06-02-owner__repo-123/handoff.md",
       "created_at": "2026-06-02T10:00:00Z"
     }
   ]
@@ -480,14 +480,14 @@ Example:
 
 The inbox index is an index only. Full issue, workspace, and handoff content live in the task directory.
 
-The `instructions.expected_output` field describes what the downstream coding agent or user should produce after accepting the handoff. It is not a list of actions Patchbay performs in the first version.
+The `instructions.expected_output` field describes what the downstream coding agent or user should produce after accepting the handoff. It is not a list of actions Issue Finder performs in the first version.
 
 ## Daily Report
 
 Daily reports are written to:
 
 ```text
-~/.patchbay/reports/YYYY-MM-DD.md
+~/.issue-finder/reports/YYYY-MM-DD.md
 ```
 
 Report content:
@@ -508,18 +508,18 @@ The LLM is optional and never controls the core workflow.
 
 Without LLM:
 
-- Patchbay still discovers issues.
-- Patchbay still prepares workspaces.
-- Patchbay still generates complete `handoff.json`.
-- Patchbay still generates `handoff.md` and `report.md`.
+- Issue Finder still discovers issues.
+- Issue Finder still prepares workspaces.
+- Issue Finder still generates complete `handoff.json`.
+- Issue Finder still generates `handoff.md` and `report.md`.
 
 With LLM enabled:
 
-- Patchbay may improve issue summary.
-- Patchbay may rewrite the goal.
-- Patchbay may improve suggested start steps.
-- Patchbay may add likely risk notes.
-- Patchbay may make the daily report more readable.
+- Issue Finder may improve issue summary.
+- Issue Finder may rewrite the goal.
+- Issue Finder may improve suggested start steps.
+- Issue Finder may add likely risk notes.
+- Issue Finder may make the daily report more readable.
 
 LLM failures do not block handoff generation. Failures are recorded in `llm_enhancement.status = "failed"` and in warnings.
 
@@ -577,7 +577,7 @@ Git operations should be implemented as a wrapper around the local `git` CLI in 
 
 ## Error Handling
 
-Patchbay should preserve clear evidence and avoid stopping a whole batch when one task fails.
+Issue Finder should preserve clear evidence and avoid stopping a whole batch when one task fails.
 
 Rules:
 
@@ -594,16 +594,16 @@ File writes for index and payload files should use a temporary file followed by 
 
 ## Safety Boundary
 
-The first version only writes Patchbay-owned local state and prepares local Git workspaces.
+The first version only writes Issue Finder-owned local state and prepares local Git workspaces.
 
 Allowed actions:
 
 - Read GitHub issue and repository metadata.
 - Clone repositories.
 - Fetch repositories.
-- Create or checkout Patchbay branches.
+- Create or checkout Issue Finder branches.
 - Scan repository files under bounded limits.
-- Write files under `~/.patchbay`.
+- Write files under `~/.issue-finder`.
 
 Disallowed actions:
 
@@ -633,7 +633,7 @@ Unit tests:
 
 Integration tests:
 
-- Use `PATCHBAY_HOME` with a temporary directory.
+- Use `ISSUE_FINDER_HOME` with a temporary directory.
 - Use a local Git repository to test workspace preparation.
 - Mock GitHub HTTP responses for `scout`.
 - Verify `daily` continues when one preparation fails and another succeeds.
@@ -644,10 +644,10 @@ Integration tests:
 The first version is successful when a user can run:
 
 ```bash
-patchbay init
-patchbay daily --top 3
-patchbay inbox
-patchbay handoff <id> --json
+issue-finder init
+issue-finder daily --top 3
+issue-finder inbox
+issue-finder handoff <id> --json
 ```
 
 and receive:
@@ -655,10 +655,10 @@ and receive:
 - Up to 3 prepared handoffs.
 - A canonical `handoff.json` for each prepared task.
 - A short `handoff.md` for each prepared task.
-- A daily report at `~/.patchbay/reports/YYYY-MM-DD.md`.
+- A daily report at `~/.issue-finder/reports/YYYY-MM-DD.md`.
 - A workflow that succeeds without LLM configuration.
 - Better summaries when LLM is configured, without LLM becoming required.
-- No source-code edits, commits, pushes, PRs, or test execution performed by Patchbay.
+- No source-code edits, commits, pushes, PRs, or test execution performed by Issue Finder.
 
 ## Implementation Notes
 
