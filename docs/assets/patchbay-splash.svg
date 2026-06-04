@@ -64,9 +64,9 @@
 
   <g transform="translate(1042 120)">
     <rect class="card" width="110" height="102" rx="16"/>
-    <path d="M35 28h32l18 18v32H35z" fill="#eaf2ff" stroke="#8eb4ff" stroke-width="2"/>
-    <path d="M67 28v18h18" fill="none" stroke="#8eb4ff" stroke-width="2"/>
-    <text class="body" x="24" y="84">handoff</text>
+    <path d="M36 22h30l18 18v28H36z" fill="#eaf2ff" stroke="#8eb4ff" stroke-width="2"/>
+    <path d="M66 22v18h18" fill="none" stroke="#8eb4ff" stroke-width="2"/>
+    <text class="body" x="55" y="88" text-anchor="middle">handoff</text>
   </g>
 
   <g transform="translate(1042 252)">

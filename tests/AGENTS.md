@@ -4,7 +4,7 @@
 
 ## 测试范围
 
-这里主要放集成测试，覆盖用户可见工作流、本地状态布局、GitHub API 行为、workspace 准备流程，以及高价值 issue 的本地评分逻辑。测试应聚焦可观察行为，并按被验证的行为命名。
+这里主要放集成测试，覆盖用户可见工作流、本地状态布局、GitHub API 行为、workspace 准备流程、JSON tool contract，以及高价值 issue 的本地评分逻辑。测试应聚焦可观察行为，并按被验证的行为命名。
 
 ## 隔离规则
 
@@ -13,6 +13,10 @@
 ## Mock 指南
 
 GitHub 和 LLM 相关工作流优先使用进程内 TCP mock server。响应内容应保持小而稳定，并且只服务当前测试关注的行为。设置 `PATCHBAY_GITHUB_API_BASE` 等环境变量时，必须用 guard 在测试结束后清理，避免影响后续测试。
+
+## Tool Contract 测试
+
+Tool contract 测试应覆盖 runtime 入口和 CLI adapter 入口。`tools call` 的 stdout 必须断言为单个 JSON object；`assess` 需要继续断言不写 handoff、inbox 或 workspace state；`prepare` gate 测试应复用 `prepare_gate` 的共享策略，不在测试里复制允许类别。`read_context` 测试必须覆盖非法 section、截断和 symlink/path traversal 防护。
 
 ## 高价值 Issue 覆盖
 
