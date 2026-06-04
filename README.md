@@ -8,7 +8,7 @@
   <img src="./docs/assets/patchbay-splash.svg" alt="Patchbay CLI workflow" width="88%" />
 </p>
 
-Patchbay finds suitable GitHub issues, ranks them with local heuristics, prepares a safe workspace, and writes a structured handoff package for tools such as Codex, Cursor, Claude Code, and Cline.
+Patchbay finds suitable GitHub issues, ranks them with local heuristics, prepares a safe workspace, and writes a structured handoff package for tools such as Codex, Cursor, Claude Code, and Cline. It also exposes a JSON tool contract so coding agents can list, assess, prepare, and read Patchbay context through structured calls.
 
 It stops before the risky parts: Patchbay does not modify target repository source, install dependencies, run validation commands, commit, push, or create pull requests.
 
@@ -48,11 +48,25 @@ For isolated local runs, keep generated state out of `~/.patchbay`:
 PATCHBAY_HOME=/tmp/patchbay-demo patchbay doctor
 ```
 
+### Use the JSON tool contract
+
+Patchbay v1 exposes a CLI JSON adapter for agent-facing tool calls:
+
+```bash
+patchbay tools list
+patchbay tools call patchbay.scout --arguments '{"limit":10}'
+patchbay tools call patchbay.assess --arguments '{"issue":"owner/repo#123"}'
+patchbay tools call patchbay.prepare --arguments '{"issue":"owner/repo#123"}'
+patchbay tools call patchbay.read_context --arguments '{"handoffId":"<inbox-id>","section":"entry"}'
+```
+
+`tools call` prints a single JSON object on stdout. The four v1 tools are `patchbay.scout`, `patchbay.assess`, `patchbay.prepare`, and `patchbay.read_context`.
+
 ## Docs
 
 - [**Usage guide**](./docs/usage.md)
 - [**Agent-safe preparation runtime**](./docs/agent-safe-preparation-runtime.md)
-- [**Rust design notes**](./docs/specs/patchbay-cli-rust-design.md)
+- [**Rust design notes**](./docs/patchbay-cli-rust-design.md)
 - [**Workflow design specs**](./docs/superpowers/specs/)
 - [**Repository guidance for coding agents**](./AGENTS.md)
 

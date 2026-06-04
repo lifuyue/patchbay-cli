@@ -2,7 +2,7 @@
 
 ## 项目结构与模块划分
 
-本仓库是一个 Rust 2021 命令行程序包。二进制入口在 `src/main.rs`，可复用逻辑从 `src/lib.rs` 导出。命令解析位于 `src/cli.rs`；工作流编排位于 `src/workflow.rs`；状态路径、收件箱、报告、GitHub 访问、工作区准备、评分、扫描、配置、诊断检查和大模型支持分别放在职责对应的 `src/*.rs` 模块中。集成测试位于 `tests/`。设计说明位于 `docs/specs/`。被忽略的 `reference/` 目录是外部参考资料。
+本仓库是一个 Rust 2021 命令行程序包。二进制入口在 `src/main.rs`，可复用逻辑从 `src/lib.rs` 导出。命令解析位于 `src/cli.rs`；工作流编排和 issue 选择位于 `src/workflow.rs`；tool contract runtime、结构化输出 DTO 和上下文读取安全边界分别位于 `src/tool_runtime.rs`、`src/tool_outputs.rs` 和 `src/tool_context.rs`；prepare gate 的唯一策略实现位于 `src/prepare_gate.rs`。状态路径、收件箱、报告、GitHub 访问、工作区准备、评分、扫描、配置、诊断检查和大模型支持分别放在职责对应的 `src/*.rs` 模块中。集成测试位于 `tests/`。设计说明位于 `docs/superpowers/specs/`，历史 Rust 设计说明位于 `docs/patchbay-cli-rust-design.md`。被忽略的 `reference/` 目录是外部参考资料。
 
 ## 面向编码代理的设计方向
 
@@ -18,6 +18,7 @@
 - `cargo clippy --all-targets -- -D warnings`：对所有目标执行代码检查，并把警告视为错误。
 - `cargo fmt --all`：提交前格式化整个程序包。
 - `cargo install --path .`：把当前 checkout 安装为 `patchbay`。
+- `cargo run -- tools list`：本地冒烟验证 JSON tool contract 是否能列出四个 Patchbay tool specs。
 
 进行隔离的手动运行时，设置 `PATCHBAY_HOME=/tmp/patchbay-demo`，避免生成的状态写入 `~/.patchbay`。
 
@@ -27,7 +28,7 @@
 
 ## 测试指南
 
-测试使用 Rust 内置测试框架，异步工作流使用 `tokio::test`。面向用户可见工作流、本地状态布局、GitHub 接口行为和工作区准备逻辑，应在 `tests/` 中增加集成测试覆盖。优先使用 `tempfile` 和类似 `PATCHBAY_HOME` 的隔离方式。测试名称应描述行为，例如 `scout_uses_mocked_github_search_responses`。
+测试使用 Rust 内置测试框架，异步工作流使用 `tokio::test`。面向用户可见工作流、本地状态布局、GitHub 接口行为、工作区准备逻辑和 JSON tool contract 行为，应在 `tests/` 中增加集成测试覆盖。优先使用 `tempfile` 和类似 `PATCHBAY_HOME` 的隔离方式；GitHub 和 tool contract 验证必须使用 mock 或临时状态，不依赖真实网络。测试名称应描述行为，例如 `scout_uses_mocked_github_search_responses`。
 
 ## 提交与拉取请求指南
 
@@ -35,4 +36,4 @@
 
 ## 安全与配置提示
 
-不要提交令牌、`.env` 文件、生成的 Patchbay 状态或目标工作区改动。GitHub 和大模型凭据应放在环境变量或 `~/.patchbay/config.toml` 中。保持项目的保守边界：Patchbay 可以准备本地工作区并写入交接产物，但不应修改目标仓库源码、安装依赖、提交、推送或创建拉取请求。
+不要提交令牌、`.env` 文件、生成的 Patchbay 状态或目标工作区改动。GitHub 和大模型凭据应放在环境变量或 `~/.patchbay/config.toml` 中。保持项目的保守边界：Patchbay 可以准备本地工作区并写入交接产物，但不应修改目标仓库源码、安装依赖、提交、推送或创建拉取请求。`patchbay.prepare` 的默认 gate 只允许高价值类别；不要在 workflow、daily 或 tool adapter 中复制 gate 规则，应复用 `prepare_gate.rs`。
