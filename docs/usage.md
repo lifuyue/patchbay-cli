@@ -14,7 +14,7 @@ Discover good first issues
   -> Generate a daily report
 ```
 
-`handoff.json` is the canonical output. `handoff.md` is the human-readable summary. `agent-policy.json`, `probe.json`, `prepare-events.jsonl`, `codex.md`, and `context/*.md` give downstream coding agents a safer starting point.
+`handoff.json` is the canonical output. `handoff.md` is the human-readable summary. `agent-policy.json`, `probe.json`, `prepare-events.jsonl`, `codex.md`, and `context/*.md` give downstream coding agents a safer starting point. See [Agent-Safe Preparation Runtime](./agent-safe-preparation-runtime.md) for the full artifact model.
 
 ## Requirements
 
@@ -223,6 +223,13 @@ If `llm.api_key_env` is set, Patchbay reads the LLM key from that environment va
 `agent-policy.json` is an agent-facing safety contract. It marks low-risk probe commands as allowed, validation commands as requiring user approval, and destructive or out-of-bound actions as forbidden. It is not an operating system sandbox.
 
 `probe.json` records fixed preparation probes and static repository facts, including workspace dirty state, current branch, origin URL, package managers, detected package scripts, agent instruction files, validation candidates, probe warnings, and truncation or timeout details.
+
+Runtime topic docs:
+
+- [Sandbox & approvals](./sandbox.md)
+- [Execution policy](./execpolicy.md)
+- [Safe probes](./safe-probes.md)
+- [Skills and context pack](./skills.md)
 
 ## Safety Boundary
 
