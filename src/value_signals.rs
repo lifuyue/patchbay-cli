@@ -174,6 +174,15 @@ pub fn risk_penalty(tags: &[RiskTag]) -> i32 {
             RiskTag::HighTriageLoad => 25,
             RiskTag::MissingMaintainerSignal => 8,
             RiskTag::WeakValidationPath => 10,
+            RiskTag::LowTrustRepo => 45,
+            RiskTag::LowImpactRepo => 20,
+            RiskTag::ForkStarAnomaly => 35,
+            RiskTag::MarketplaceNoise => 42,
+            RiskTag::CompetitionContested => 25,
+            RiskTag::CompetitionSaturated => 55,
+            RiskTag::CompetitionEvidenceMissing => 18,
+            RiskTag::ProfileMismatch => 25,
+            RiskTag::ScopeRisk => 15,
         })
         .sum::<i32>()
         .clamp(0, 100)
@@ -499,9 +508,11 @@ fn has_actionable_language(text: &str) -> bool {
 fn has_file_path_reference(text: &str) -> bool {
     text.split_whitespace()
         .map(|token| {
-            token.trim_matches(|ch: char| {
-                !ch.is_ascii_alphanumeric() && ch != '/' && ch != '.' && ch != '-' && ch != '_'
-            })
+            token
+                .trim_matches(|ch: char| {
+                    !ch.is_ascii_alphanumeric() && ch != '/' && ch != '.' && ch != '-' && ch != '_'
+                })
+                .trim_end_matches(['.', ',', ';', ':', ')', ']'])
         })
         .any(|token| {
             token.contains('/')

@@ -196,17 +196,19 @@ mod tests {
         };
         let assessment = ValueAssessment {
             final_rank_score: 80,
+            category: RecommendationCategory::HighValueReady,
             attention_score: 90,
             execution_score: 70,
             profile_fit_score: 50,
             risk_penalty: 10,
-            recommendation_category: RecommendationCategory::AgentReadyHighValue,
+            recommendation_category: RecommendationCategory::HighValueReady,
             attention_band: ScoreBand::High,
             execution_band: ScoreBand::High,
             signals: Vec::new(),
             risk_tags: Vec::new(),
             missing_evidence: Vec::new(),
             explanation: Vec::new(),
+            ..ValueAssessment::default()
         };
         let before_score = assessment.final_rank_score;
         let before_category = assessment.recommendation_category;

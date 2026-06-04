@@ -15,7 +15,7 @@ use crate::prepare_events::PrepareEventLog;
 use crate::probe::ProbePack;
 use crate::readiness::{assess_readiness, ExecutionReadiness};
 use crate::repo_scan::{CandidateFile, ValidationCommand};
-use crate::value_scoring::{RecommendationCategory, ScoreBand, ValueAssessment};
+use crate::value_scoring::{RecommendationCategory, ScoreBand, ValueAssessment, ValueGates};
 use crate::workspace::PreparedWorkspace;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -225,6 +225,28 @@ impl Handoff {
                 "- Profile fit score: {}",
                 self.value_assessment.profile_fit_score
             ),
+            format!(
+                "- Repo gate: {} / {} - {}",
+                self.value_assessment.gates.repo_influence.status,
+                self.value_assessment.gates.repo_influence.band,
+                self.value_assessment
+                    .gates
+                    .repo_influence
+                    .reasons
+                    .join("; ")
+            ),
+            format!(
+                "- Competition gate: {} / {} - {}",
+                self.value_assessment.gates.competition.status,
+                self.value_assessment.gates.competition.band,
+                self.value_assessment.gates.competition.reasons.join("; ")
+            ),
+            format!(
+                "- Profile gate: {} / {} - {}",
+                self.value_assessment.gates.profile_fit.status,
+                self.value_assessment.gates.profile_fit.band,
+                self.value_assessment.gates.profile_fit.reasons.join("; ")
+            ),
             format!("- Risk penalty: {}", self.value_assessment.risk_penalty),
             format!(
                 "- Risk tags: {}",
@@ -320,15 +342,19 @@ impl Handoff {
 fn fallback_assessment(issue: &GitHubIssue) -> ValueAssessment {
     ValueAssessment {
         final_rank_score: 0,
+        category: RecommendationCategory::NeedsTriage,
         attention_score: 0,
         execution_score: 0,
         profile_fit_score: 0,
         risk_penalty: 0,
         recommendation_category: RecommendationCategory::NeedsTriage,
+        gates: ValueGates::default(),
+        scores: Default::default(),
         attention_band: ScoreBand::Low,
         execution_band: ScoreBand::Low,
         signals: Vec::new(),
         risk_tags: Vec::new(),
+        evidence: Vec::new(),
         missing_evidence: vec![format!(
             "Value assessment was not generated for {}#{}",
             issue.repo_full_name, issue.number

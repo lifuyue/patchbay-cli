@@ -24,6 +24,7 @@ use crate::value_scoring::{
 use crate::workspace;
 
 const ENRICHED_SCOUT_CANDIDATE_LIMIT: usize = 40;
+const COMPETITION_TIMELINE_CANDIDATE_LIMIT: usize = 20;
 
 #[derive(Debug, Clone)]
 pub enum PrepareOutcome {
@@ -312,10 +313,15 @@ pub fn render_ranked(ranked: &[RankedValueIssue]) -> String {
                     .join(", ")
             };
             let detail = format!(
-                "{} | attention {} ({}) | execution {} ({}) | fit {} | risk {} | evidence: {} | risks: {}",
+                "{} | rank {} | repo {}:{} | competition {}:{} | profile {}:{} | execution {} ({}) | fit {} | risk {} | evidence: {} | risks: {}",
                 issue.value_assessment.recommendation_category,
-                issue.value_assessment.attention_score,
-                issue.value_assessment.attention_band,
+                issue.value_assessment.final_rank_score,
+                issue.value_assessment.gates.repo_influence.status,
+                issue.value_assessment.gates.repo_influence.band,
+                issue.value_assessment.gates.competition.status,
+                issue.value_assessment.gates.competition.band,
+                issue.value_assessment.gates.profile_fit.status,
+                issue.value_assessment.gates.profile_fit.band,
                 issue.value_assessment.execution_score,
                 issue.value_assessment.execution_band,
                 issue.value_assessment.profile_fit_score,
@@ -374,8 +380,18 @@ async fn enrich_ranked_issues(
     refresh: bool,
 ) -> Vec<RankedValueIssue> {
     let mut values = Vec::new();
-    for rough in ranked {
-        values.push(enrich_issue_for_value(paths, config, enrichment, rough.issue, refresh).await);
+    for (index, rough) in ranked.into_iter().enumerate() {
+        values.push(
+            enrich_issue_for_value_with_competition(
+                paths,
+                config,
+                enrichment,
+                rough.issue,
+                refresh,
+                index < COMPETITION_TIMELINE_CANDIDATE_LIMIT,
+            )
+            .await,
+        );
     }
     values
 }
@@ -387,7 +403,20 @@ async fn enrich_issue_for_value(
     issue: GitHubIssue,
     refresh: bool,
 ) -> RankedValueIssue {
-    let enriched = enrichment.enrich_issue(paths, &issue, refresh).await;
+    enrich_issue_for_value_with_competition(paths, config, enrichment, issue, refresh, true).await
+}
+
+async fn enrich_issue_for_value_with_competition(
+    paths: &PatchbayPaths,
+    config: &Config,
+    enrichment: &GitHubEnrichmentClient,
+    issue: GitHubIssue,
+    refresh: bool,
+    include_competition_timeline: bool,
+) -> RankedValueIssue {
+    let enriched = enrichment
+        .enrich_issue_with_options(paths, &issue, refresh, include_competition_timeline)
+        .await;
     let value_assessment = assess_issue(&enriched, &config.profile);
     ranked_value_issue(issue, value_assessment, enriched)
 }
@@ -409,6 +438,40 @@ fn ranked_value_issue(
 }
 
 fn sort_by_value(ranked: &mut [RankedValueIssue]) {
+    ranked.sort_by(|left, right| {
+        left.value_assessment
+            .recommendation_category
+            .sort_rank()
+            .cmp(&right.value_assessment.recommendation_category.sort_rank())
+            .then_with(|| {
+                right
+                    .value_assessment
+                    .final_rank_score
+                    .cmp(&left.value_assessment.final_rank_score)
+            })
+            .then_with(|| {
+                right
+                    .value_assessment
+                    .execution_score
+                    .cmp(&left.value_assessment.execution_score)
+            })
+            .then_with(|| {
+                right
+                    .value_assessment
+                    .profile_fit_score
+                    .cmp(&left.value_assessment.profile_fit_score)
+            })
+            .then_with(|| {
+                right
+                    .value_assessment
+                    .attention_score
+                    .cmp(&left.value_assessment.attention_score)
+            })
+    });
+}
+
+#[allow(dead_code)]
+fn legacy_sort_by_score(ranked: &mut [RankedValueIssue]) {
     ranked.sort_by(|left, right| {
         right
             .value_assessment

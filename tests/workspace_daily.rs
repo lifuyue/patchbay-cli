@@ -88,7 +88,7 @@ async fn daily_continues_after_single_prepare_failure() {
     let config = Config::default();
     let success = issue("owner/success", 1);
     let failure = issue("owner/fail", 2);
-    let ranked = vec![ranked_value(success, 72, 60), ranked_value(failure, 68, 55)];
+    let ranked = vec![ranked_value(success, 72, 60), ranked_value(failure, 70, 55)];
 
     let (report, _) = workflow::daily_from_ranked(&paths, &config, ranked, 2, 2)
         .await
@@ -156,7 +156,7 @@ async fn daily_continues_after_single_output_write_failure() {
     .unwrap();
     let ranked = vec![
         ranked_value(failwrite, 70, 55),
-        ranked_value(success, 69, 55),
+        ranked_value(success, 70, 55),
     ];
 
     let (report, report_path) = workflow::daily_from_ranked(&paths, &config, ranked, 2, 2)
@@ -360,20 +360,19 @@ fn ranked_value(
 ) -> RankedValueIssue {
     let enriched_issue = EnrichedIssue::from_issue(&issue);
     let attention_score = final_rank_score;
-    let recommendation_category = if attention_score < 60 && execution_score < 40 {
-        RecommendationCategory::NeedsTriage
-    } else if attention_score >= 70 && execution_score >= 70 {
-        RecommendationCategory::AgentReadyHighValue
-    } else if attention_score >= 70 {
-        RecommendationCategory::HighAttention
+    let recommendation_category = if attention_score >= 70 && execution_score >= 70 {
+        RecommendationCategory::HighValueReady
+    } else if attention_score >= 70 && execution_score >= 40 {
+        RecommendationCategory::HighValueNeedsScoping
     } else {
-        RecommendationCategory::NicheButActionable
+        RecommendationCategory::NeedsTriage
     };
     RankedValueIssue {
         issue,
         score: final_rank_score,
         value_assessment: ValueAssessment {
             final_rank_score,
+            category: recommendation_category,
             attention_score,
             execution_score,
             profile_fit_score: 40,
@@ -401,6 +400,7 @@ fn ranked_value(
             risk_tags: Vec::new(),
             missing_evidence: Vec::new(),
             explanation: vec!["test recommendation evidence".to_string()],
+            ..ValueAssessment::default()
         },
         enriched_issue,
         explanation: vec!["test recommendation evidence".to_string()],

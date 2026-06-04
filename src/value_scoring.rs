@@ -1,112 +1,74 @@
-use serde::{Deserialize, Serialize};
-use std::fmt;
+pub use crate::value_model::{
+    GateBand, GateStatus, GateVerdict, RankedValueIssue, RecommendationCategory, RiskTag,
+    ScoreBand, ValueAssessment, ValueEvidence, ValueGates, ValueScores,
+};
 
+use crate::competition::CompetitionBand;
 use crate::config::ProfileConfig;
-use crate::github::GitHubIssue;
 use crate::github_enrichment::EnrichedIssue;
+use crate::value_gates::{
+    competition_gate, fork_star_ratio, low_depth_gate, marketplace_terms, profile_fit_gate,
+    repo_influence_gate,
+};
+use crate::value_scores::{
+    is_low_depth_tag, rank_score, score_band, value_scores, ExecutionQualityAssessment,
+    ProfileFitAssessment,
+};
 use crate::value_signals::{
     build_risk_tags, build_value_signals, risk_penalty, SignalAxis, ValueSignal,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct RankedValueIssue {
-    pub issue: GitHubIssue,
-    pub score: i32,
-    pub value_assessment: ValueAssessment,
-    pub enriched_issue: EnrichedIssue,
-    pub explanation: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ValueAssessment {
-    pub final_rank_score: i32,
-    pub attention_score: i32,
-    pub execution_score: i32,
-    pub profile_fit_score: i32,
-    pub risk_penalty: i32,
-    pub recommendation_category: RecommendationCategory,
-    pub attention_band: ScoreBand,
-    pub execution_band: ScoreBand,
-    pub signals: Vec<ValueSignal>,
-    pub risk_tags: Vec<RiskTag>,
-    pub missing_evidence: Vec<String>,
-    pub explanation: Vec<String>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum RecommendationCategory {
-    AgentReadyHighValue,
-    HighAttention,
-    HighAttentionLowDepth,
-    NicheButActionable,
-    NeedsTriage,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "snake_case")]
-pub enum ScoreBand {
-    Low,
-    Medium,
-    High,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
-pub enum RiskTag {
-    NoCodeRequired,
-    MicroContribution,
-    ContentFill,
-    TemplateLike,
-    EventNoise,
-    ThinTask,
-    HighTriageLoad,
-    MissingMaintainerSignal,
-    WeakValidationPath,
-}
-
-impl fmt::Display for RecommendationCategory {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::AgentReadyHighValue => "agent_ready_high_value",
-            Self::HighAttention => "high_attention",
-            Self::HighAttentionLowDepth => "high_attention_low_depth",
-            Self::NicheButActionable => "niche_but_actionable",
-            Self::NeedsTriage => "needs_triage",
-        })
-    }
-}
-
-impl fmt::Display for ScoreBand {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-        })
-    }
-}
-
-impl fmt::Display for RiskTag {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::NoCodeRequired => "no_code_required",
-            Self::MicroContribution => "micro_contribution",
-            Self::ContentFill => "content_fill",
-            Self::TemplateLike => "template_like",
-            Self::EventNoise => "event_noise",
-            Self::ThinTask => "thin_task",
-            Self::HighTriageLoad => "high_triage_load",
-            Self::MissingMaintainerSignal => "missing_maintainer_signal",
-            Self::WeakValidationPath => "weak_validation_path",
-        })
-    }
-}
-
 pub fn assess_issue(enriched: &EnrichedIssue, profile: &ProfileConfig) -> ValueAssessment {
     let signals = build_value_signals(enriched, profile);
-    let risk_tags = build_risk_tags(enriched);
-    aggregate_signals(signals, risk_tags, enriched)
+    let mut risk_tags = build_risk_tags(enriched);
+    let low_depth = low_depth_gate(enriched);
+    let repo_influence = repo_influence_gate(enriched);
+
+    add_gate_risk_tags(enriched, &low_depth, &repo_influence, &mut risk_tags);
+
+    let (scores, fit, execution) =
+        value_scores(enriched, profile, &risk_tags, repo_influence.status);
+    add_score_risk_tags(&scores, &fit, &execution, &mut risk_tags);
+
+    let competition = competition_gate(&enriched.competition);
+    add_competition_risk_tags(enriched, &competition, &mut risk_tags);
+    add_scope_risk_tag(enriched, &mut risk_tags);
+    sort_dedupe_risk_tags(&mut risk_tags);
+
+    let (scores, fit, execution) =
+        value_scores(enriched, profile, &risk_tags, repo_influence.status);
+    let profile_fit = profile_fit_gate(&fit);
+    let gates = ValueGates {
+        low_depth,
+        repo_influence,
+        competition,
+        profile_fit,
+    };
+
+    let category = recommendation_category(&gates, &scores, &risk_tags);
+    let final_rank_score = rank_score(category, &scores);
+    let missing_evidence = missing_evidence(enriched, &gates);
+    let evidence = value_evidence(&gates, &fit, &execution, &scores);
+    let explanation = top_explanations(&evidence, &signals);
+
+    ValueAssessment {
+        final_rank_score,
+        category,
+        recommendation_category: category,
+        gates,
+        scores: scores.clone(),
+        risk_tags,
+        evidence,
+        missing_evidence,
+        explanation,
+        attention_score: scores.repo_influence_score,
+        execution_score: scores.execution_quality_score,
+        profile_fit_score: scores.profile_fit_score,
+        risk_penalty: scores.risk_score,
+        attention_band: score_band(scores.repo_influence_score),
+        execution_band: score_band(scores.execution_quality_score),
+        signals,
+    }
 }
 
 pub fn aggregate_signals(
@@ -118,32 +80,37 @@ pub fn aggregate_signals(
     let execution_score = axis_score(&signals, SignalAxis::Execution);
     let profile_fit_score = axis_score(&signals, SignalAxis::ProfileFit);
     let risk_penalty = risk_penalty(&risk_tags);
-    let final_rank_score = final_rank_score(
-        attention_score,
-        execution_score,
-        profile_fit_score,
-        risk_penalty,
-    );
     let attention_band = score_band(attention_score);
     let execution_band = score_band(execution_score);
-    let recommendation_category =
-        recommendation_category(attention_band, execution_band, risk_penalty, &risk_tags);
-    let missing_evidence = missing_evidence(enriched);
-    let explanation = top_explanations(&signals);
+    let scores = ValueScores {
+        repo_influence_score: attention_score,
+        profile_fit_score,
+        execution_quality_score: execution_score,
+        maintainer_signal_score: 0,
+        freshness_score: 0,
+        risk_score: risk_penalty,
+    };
+    let category = legacy_recommendation_category(attention_band, execution_band, &risk_tags);
+    let final_rank_score = rank_score(category, &scores);
+    let explanation = top_signal_explanations(&signals);
 
     ValueAssessment {
         final_rank_score,
+        category,
+        recommendation_category: category,
+        gates: ValueGates::default(),
+        scores,
+        risk_tags,
+        evidence: Vec::new(),
+        missing_evidence: missing_evidence(enriched, &ValueGates::default()),
+        explanation,
         attention_score,
         execution_score,
         profile_fit_score,
         risk_penalty,
-        recommendation_category,
         attention_band,
         execution_band,
         signals,
-        risk_tags,
-        missing_evidence,
-        explanation,
     }
 }
 
@@ -153,75 +120,168 @@ pub fn final_rank_score(
     profile_fit_score: i32,
     risk_penalty: i32,
 ) -> i32 {
-    ((attention_score as f64 * 0.55)
-        + (execution_score as f64 * 0.30)
-        + (profile_fit_score as f64 * 0.10)
-        - (risk_penalty as f64 * 0.15))
-        .round()
-        .clamp(0.0, 100.0) as i32
-}
-
-pub fn score_band(score: i32) -> ScoreBand {
-    if score >= 70 {
-        ScoreBand::High
-    } else if score >= 30 {
-        ScoreBand::Medium
-    } else {
-        ScoreBand::Low
-    }
+    let scores = ValueScores {
+        repo_influence_score: attention_score,
+        profile_fit_score,
+        execution_quality_score: execution_score,
+        maintainer_signal_score: 0,
+        freshness_score: 0,
+        risk_score: risk_penalty,
+    };
+    rank_score(RecommendationCategory::HighValueNeedsScoping, &scores)
 }
 
 pub fn recommendation_category(
-    attention_band: ScoreBand,
-    execution_band: ScoreBand,
-    risk_penalty: i32,
+    gates: &ValueGates,
+    scores: &ValueScores,
     risk_tags: &[RiskTag],
 ) -> RecommendationCategory {
-    if attention_band == ScoreBand::High && has_low_depth_tag(risk_tags) {
-        return RecommendationCategory::HighAttentionLowDepth;
+    let competition_saturated = gates.competition.band == GateBand::Saturated
+        || risk_tags.contains(&RiskTag::CompetitionSaturated);
+    let competition_contested = gates.competition.band == GateBand::Contested
+        || risk_tags.contains(&RiskTag::CompetitionContested);
+    let low_trust = risk_tags.contains(&RiskTag::LowTrustRepo)
+        || risk_tags.contains(&RiskTag::MarketplaceNoise)
+        || gates.repo_influence.status == GateStatus::HardFail;
+    let scope_risk = risk_tags.contains(&RiskTag::ScopeRisk);
+
+    if gates.low_depth.status == GateStatus::HardFail || risk_tags.iter().any(is_low_depth_tag) {
+        return RecommendationCategory::FilteredLowDepth;
     }
-    if attention_band == ScoreBand::High && risk_penalty >= 45 {
-        return RecommendationCategory::NeedsTriage;
+
+    if competition_saturated || low_trust {
+        return RecommendationCategory::ContestedOrLowTrust;
     }
-    if attention_band == ScoreBand::High && execution_band == ScoreBand::High && risk_penalty < 30 {
-        return RecommendationCategory::AgentReadyHighValue;
+
+    if gates.repo_influence.status == GateStatus::Pass
+        && gates.competition.status == GateStatus::Pass
+        && gates.profile_fit.status == GateStatus::Pass
+        && scores.profile_fit_score >= 60
+        && scores.execution_quality_score >= 70
+        && !scope_risk
+    {
+        return RecommendationCategory::HighValueReady;
     }
-    if attention_band == ScoreBand::High {
-        return RecommendationCategory::HighAttention;
+
+    if gates.repo_influence.status == GateStatus::Pass
+        && gates.competition.band != GateBand::Saturated
+        && scores.profile_fit_score >= 50
+        && scores.execution_quality_score >= 50
+        && (!competition_contested || scores.execution_quality_score >= 70)
+    {
+        return RecommendationCategory::HighValueNeedsScoping;
     }
-    if execution_band == ScoreBand::High {
+
+    if gates.repo_influence.status == GateStatus::SoftFail
+        && gates.competition.band != GateBand::Saturated
+        && !competition_contested
+        && scores.profile_fit_score >= 75
+        && scores.execution_quality_score >= 70
+    {
         return RecommendationCategory::NicheButActionable;
     }
+
+    if competition_contested {
+        return RecommendationCategory::ContestedOrLowTrust;
+    }
+
     RecommendationCategory::NeedsTriage
 }
 
 pub fn is_daily_prepare_candidate(assessment: &ValueAssessment) -> bool {
-    !(assessment.recommendation_category == RecommendationCategory::NeedsTriage
-        && assessment.attention_score < 60)
+    matches!(
+        assessment.recommendation_category,
+        RecommendationCategory::HighValueReady | RecommendationCategory::HighValueNeedsScoping
+    )
 }
 
-fn axis_score(signals: &[ValueSignal], axis: SignalAxis) -> i32 {
-    signals
+fn add_gate_risk_tags(
+    enriched: &EnrichedIssue,
+    low_depth: &GateVerdict,
+    repo_influence: &GateVerdict,
+    risk_tags: &mut Vec<RiskTag>,
+) {
+    if low_depth.status == GateStatus::HardFail && !risk_tags.iter().any(is_low_depth_tag) {
+        risk_tags.push(RiskTag::ContentFill);
+    }
+
+    if repo_influence.status == GateStatus::HardFail {
+        risk_tags.push(RiskTag::LowTrustRepo);
+    } else if repo_influence.status == GateStatus::SoftFail {
+        risk_tags.push(RiskTag::LowImpactRepo);
+    }
+
+    if fork_star_ratio(enriched.repository.stars, enriched.repository.forks) > 3.0
+        && enriched.repository.stars < 500
+    {
+        risk_tags.push(RiskTag::ForkStarAnomaly);
+    }
+    if !marketplace_terms(enriched).is_empty() {
+        risk_tags.push(RiskTag::MarketplaceNoise);
+    }
+}
+
+fn add_score_risk_tags(
+    scores: &ValueScores,
+    fit: &ProfileFitAssessment,
+    _execution: &ExecutionQualityAssessment,
+    risk_tags: &mut Vec<RiskTag>,
+) {
+    if scores.profile_fit_score < 40 {
+        risk_tags.push(RiskTag::ProfileMismatch);
+    }
+    if fit
+        .reasons
         .iter()
-        .filter(|signal| signal.axis == axis)
-        .map(|signal| signal.score_delta)
-        .sum::<i32>()
-        .clamp(0, 100)
+        .any(|reason| reason.contains("outside the configured profile"))
+    {
+        risk_tags.push(RiskTag::ProfileMismatch);
+    }
 }
 
-fn has_low_depth_tag(risk_tags: &[RiskTag]) -> bool {
-    risk_tags.iter().any(|tag| {
-        matches!(
-            tag,
-            RiskTag::NoCodeRequired
-                | RiskTag::MicroContribution
-                | RiskTag::ContentFill
-                | RiskTag::ThinTask
-        )
-    })
+fn add_competition_risk_tags(
+    enriched: &EnrichedIssue,
+    competition: &GateVerdict,
+    risk_tags: &mut Vec<RiskTag>,
+) {
+    if !enriched.competition.warnings.is_empty() {
+        risk_tags.push(RiskTag::CompetitionEvidenceMissing);
+    }
+    match enriched.competition.competition_band {
+        CompetitionBand::Contested => risk_tags.push(RiskTag::CompetitionContested),
+        CompetitionBand::Saturated => risk_tags.push(RiskTag::CompetitionSaturated),
+        CompetitionBand::Clear | CompetitionBand::Light => {}
+    }
+    if competition.band == GateBand::Contested {
+        risk_tags.push(RiskTag::CompetitionContested);
+    }
+    if competition.band == GateBand::Saturated {
+        risk_tags.push(RiskTag::CompetitionSaturated);
+    }
 }
 
-fn missing_evidence(enriched: &EnrichedIssue) -> Vec<String> {
+fn add_scope_risk_tag(enriched: &EnrichedIssue, risk_tags: &mut Vec<RiskTag>) {
+    if has_scope_risk(enriched) {
+        risk_tags.push(RiskTag::ScopeRisk);
+    }
+}
+
+fn has_scope_risk(enriched: &EnrichedIssue) -> bool {
+    let text =
+        crate::scoring::normalize(&format!("{} {}", enriched.issue.title, enriched.issue.body));
+    text.contains("multiple repositories")
+        || text.contains("multiple repos")
+        || text.contains("two template")
+        || text.contains("template repos")
+        || text.contains("template repositories")
+        || text.contains("3 fixes required")
+        || text.contains("three fixes required")
+        || text.contains("briefcase windows visualstudio template")
+        || text.contains("briefcase windows app template")
+        || text.matches("github com").count() >= 2
+}
+
+fn missing_evidence(enriched: &EnrichedIssue, gates: &ValueGates) -> Vec<String> {
     let mut missing = Vec::new();
     if enriched.growth.recent_stargazer_sample.is_empty() {
         missing.push("Recent stargazer sample was unavailable".to_string());
@@ -233,13 +293,86 @@ fn missing_evidence(enriched: &EnrichedIssue) -> Vec<String> {
         missing
             .push("Issue comments count exists but comment excerpts were unavailable".to_string());
     }
+    if gates.competition.status == GateStatus::SoftFail
+        && gates
+            .competition
+            .evidence_refs
+            .iter()
+            .any(|item| item == "issue:timeline")
+    {
+        missing.push("Competition timeline evidence was unavailable".to_string());
+    }
     missing.extend(enriched.warnings.iter().cloned());
+    missing.extend(enriched.competition.warnings.iter().cloned());
     missing.sort();
     missing.dedup();
     missing
 }
 
-fn top_explanations(signals: &[ValueSignal]) -> Vec<String> {
+fn value_evidence(
+    gates: &ValueGates,
+    fit: &ProfileFitAssessment,
+    execution: &ExecutionQualityAssessment,
+    scores: &ValueScores,
+) -> Vec<ValueEvidence> {
+    let mut evidence = Vec::new();
+    for (name, gate) in [
+        ("Low-depth gate", &gates.low_depth),
+        ("Repo influence gate", &gates.repo_influence),
+        ("Competition gate", &gates.competition),
+        ("Profile fit gate", &gates.profile_fit),
+    ] {
+        evidence.push(ValueEvidence {
+            summary: format!(
+                "{name}: {} / {} - {}",
+                gate.status,
+                gate.band,
+                gate.reasons.join("; ")
+            ),
+            evidence_refs: gate.evidence_refs.clone(),
+        });
+    }
+    evidence.push(ValueEvidence {
+        summary: format!(
+            "Scores: repo {}, profile {}, execution {}, maintainer {}, freshness {}, risk {}",
+            scores.repo_influence_score,
+            scores.profile_fit_score,
+            scores.execution_quality_score,
+            scores.maintainer_signal_score,
+            scores.freshness_score,
+            scores.risk_score
+        ),
+        evidence_refs: vec!["value_assessment:scores".to_string()],
+    });
+    evidence.push(ValueEvidence {
+        summary: format!("Profile fit: {}", fit.reasons.join("; ")),
+        evidence_refs: fit.evidence_refs.clone(),
+    });
+    evidence.push(ValueEvidence {
+        summary: format!("Execution quality: {}", execution.reasons.join("; ")),
+        evidence_refs: execution.evidence_refs.clone(),
+    });
+    evidence
+}
+
+fn top_explanations(evidence: &[ValueEvidence], signals: &[ValueSignal]) -> Vec<String> {
+    let mut explanations = evidence
+        .iter()
+        .take(6)
+        .map(|item| item.summary.clone())
+        .collect::<Vec<_>>();
+    for signal in top_signal_explanations(signals) {
+        if explanations.len() >= 8 {
+            break;
+        }
+        if !explanations.contains(&signal) {
+            explanations.push(signal);
+        }
+    }
+    explanations
+}
+
+fn top_signal_explanations(signals: &[ValueSignal]) -> Vec<String> {
     let mut ordered = signals.to_vec();
     ordered.sort_by_key(|signal| std::cmp::Reverse(signal.score_delta));
     ordered
@@ -250,96 +383,158 @@ fn top_explanations(signals: &[ValueSignal]) -> Vec<String> {
         .collect()
 }
 
+fn legacy_recommendation_category(
+    attention_band: ScoreBand,
+    execution_band: ScoreBand,
+    risk_tags: &[RiskTag],
+) -> RecommendationCategory {
+    if risk_tags.iter().any(is_low_depth_tag) {
+        return RecommendationCategory::FilteredLowDepth;
+    }
+    if attention_band == ScoreBand::High && execution_band == ScoreBand::High {
+        return RecommendationCategory::HighValueReady;
+    }
+    if attention_band == ScoreBand::High {
+        return RecommendationCategory::HighValueNeedsScoping;
+    }
+    if execution_band == ScoreBand::High {
+        return RecommendationCategory::NicheButActionable;
+    }
+    RecommendationCategory::NeedsTriage
+}
+
+fn axis_score(signals: &[ValueSignal], axis: SignalAxis) -> i32 {
+    signals
+        .iter()
+        .filter(|signal| signal.axis == axis)
+        .map(|signal| signal.score_delta)
+        .sum::<i32>()
+        .clamp(0, 100)
+}
+
+fn sort_dedupe_risk_tags(tags: &mut Vec<RiskTag>) {
+    tags.sort_by_key(|tag| tag.to_string());
+    tags.dedup();
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{
-        aggregate_signals, final_rank_score, recommendation_category, RecommendationCategory,
-        RiskTag, ScoreBand,
-    };
+    use chrono::Utc;
+
+    use super::{assess_issue, final_rank_score, is_daily_prepare_candidate};
+    use crate::competition::{CompetitionBand, CompetitionFacts};
+    use crate::config::ProfileConfig;
     use crate::github::GitHubIssue;
     use crate::github_enrichment::EnrichedIssue;
-    use crate::value_signals::{SignalAxis, ValueSignal, ValueSignalKind};
+    use crate::value_model::{GateBand, RecommendationCategory, RiskTag};
 
-    fn signal(kind: ValueSignalKind, axis: SignalAxis, delta: i32) -> ValueSignal {
-        ValueSignal {
-            kind,
-            axis,
-            score_delta: delta,
-            summary: "summary".to_string(),
-            evidence_refs: vec!["issue:body".to_string()],
-        }
-    }
-
-    fn enriched() -> EnrichedIssue {
+    fn issue(title: &str, body: &str, stars: u64) -> EnrichedIssue {
+        let now = Utc::now().to_rfc3339();
         let issue = GitHubIssue {
             id: 1,
             number: 1,
-            title: "Issue".to_string(),
-            body: "Body".to_string(),
-            labels: vec![],
+            title: title.to_string(),
+            body: body.to_string(),
+            labels: vec!["good first issue".to_string()],
             url: "https://github.com/owner/repo/issues/1".to_string(),
             repo_full_name: "owner/repo".to_string(),
             repo_name: "repo".to_string(),
-            repo_description: String::new(),
-            repo_stars: 0,
-            created_at: "2026-06-01T00:00:00Z".to_string(),
-            updated_at: "2026-06-01T00:00:00Z".to_string(),
+            repo_description: "Rust CLI developer tools".to_string(),
+            repo_stars: stars,
+            created_at: now.clone(),
+            updated_at: now,
         };
-        EnrichedIssue::from_issue(&issue)
+        let mut enriched = EnrichedIssue::from_issue(&issue);
+        enriched.repository.stars = stars;
+        enriched.repository.forks = 220;
+        enriched.repository.subscribers = Some(40);
+        enriched.repository.created_at = Some("2020-01-01T00:00:00Z".to_string());
+        enriched.competition = CompetitionFacts::default();
+        enriched
+    }
+
+    fn profile() -> ProfileConfig {
+        ProfileConfig {
+            tech_stack: vec!["Rust".to_string()],
+            keywords: vec!["cli".to_string()],
+        }
     }
 
     #[test]
-    fn applies_final_rank_formula() {
-        assert_eq!(final_rank_score(100, 100, 100, 100), 80);
-    }
-
-    #[test]
-    fn classifies_agent_ready_high_value() {
-        assert_eq!(
-            recommendation_category(ScoreBand::High, ScoreBand::High, 10, &[]),
-            RecommendationCategory::AgentReadyHighValue
+    fn classifies_high_value_ready_after_gates() {
+        let enriched = issue(
+            "Fix Rust CLI parser",
+            "Steps to reproduce: run cargo test. Expected graceful behavior, actual panic in src/main.rs. Suggested fix: guard empty input and verify with tests.",
+            2_500,
         );
-    }
-
-    #[test]
-    fn low_depth_tag_overrides_high_attention() {
-        assert_eq!(
-            recommendation_category(
-                ScoreBand::High,
-                ScoreBand::Low,
-                40,
-                &[RiskTag::NoCodeRequired]
-            ),
-            RecommendationCategory::HighAttentionLowDepth
-        );
-    }
-
-    #[test]
-    fn aggregates_axis_scores_and_risk_penalty() {
-        let assessment = aggregate_signals(
-            vec![
-                signal(
-                    ValueSignalKind::EstablishedImpact,
-                    SignalAxis::Attention,
-                    35,
-                ),
-                signal(ValueSignalKind::GrowthMomentum, SignalAxis::Attention, 35),
-                signal(ValueSignalKind::IssueClarity, SignalAxis::Execution, 25),
-                signal(
-                    ValueSignalKind::ReproductionSteps,
-                    SignalAxis::Execution,
-                    25,
-                ),
-                signal(ValueSignalKind::IssueFit, SignalAxis::ProfileFit, 50),
-            ],
-            vec![],
-            &enriched(),
-        );
-        assert_eq!(assessment.attention_score, 70);
-        assert_eq!(assessment.execution_score, 50);
+        let assessment = assess_issue(&enriched, &profile());
         assert_eq!(
             assessment.recommendation_category,
-            RecommendationCategory::HighAttention
+            RecommendationCategory::HighValueReady
         );
+        assert!(is_daily_prepare_candidate(&assessment));
+    }
+
+    #[test]
+    fn saturated_competition_downgrades_to_contested() {
+        let mut enriched = issue(
+            "Fix Rust CLI parser",
+            "Steps to reproduce: run cargo test. Expected graceful behavior, actual panic in src/main.rs. Suggested fix: guard empty input and verify with tests.",
+            2_500,
+        );
+        enriched.competition = CompetitionFacts {
+            open_pr_refs: 2,
+            closed_pr_refs: 3,
+            competition_points: 9,
+            competition_band: CompetitionBand::Saturated,
+            ..CompetitionFacts::default()
+        };
+        let assessment = assess_issue(&enriched, &profile());
+        assert_eq!(
+            assessment.recommendation_category,
+            RecommendationCategory::ContestedOrLowTrust
+        );
+        assert!(assessment
+            .risk_tags
+            .contains(&RiskTag::CompetitionSaturated));
+        assert_eq!(assessment.gates.competition.band, GateBand::Saturated);
+    }
+
+    #[test]
+    fn low_depth_is_filtered_before_high_value_gate() {
+        let enriched = issue(
+            "Add new Grammar Point",
+            "No Code Required. This can be done from your browser in under 60 seconds. Add JSON content.",
+            2_500,
+        );
+        let assessment = assess_issue(&enriched, &profile());
+        assert_eq!(
+            assessment.recommendation_category,
+            RecommendationCategory::FilteredLowDepth
+        );
+        assert!(!is_daily_prepare_candidate(&assessment));
+    }
+
+    #[test]
+    fn missing_timeline_blocks_ready() {
+        let mut enriched = issue(
+            "Fix Rust CLI parser",
+            "Steps to reproduce: run cargo test. Expected graceful behavior, actual panic in src/main.rs. Suggested fix: guard empty input and verify with tests.",
+            2_500,
+        );
+        enriched.competition = CompetitionFacts::missing_timeline();
+        let assessment = assess_issue(&enriched, &profile());
+        assert_eq!(
+            assessment.recommendation_category,
+            RecommendationCategory::HighValueNeedsScoping
+        );
+        assert!(assessment
+            .risk_tags
+            .contains(&RiskTag::CompetitionEvidenceMissing));
+    }
+
+    #[test]
+    fn compatibility_rank_score_uses_new_rank_axes() {
+        assert_eq!(final_rank_score(100, 100, 100, 100), 65);
     }
 }

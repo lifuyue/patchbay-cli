@@ -157,7 +157,7 @@ fn writes_handoff_inbox_and_report_under_patchbay_home() {
             execution_score: 70,
             profile_fit_score: 40,
             risk_penalty: 5,
-            recommendation_category: "agent_ready_high_value".to_string(),
+            recommendation_category: "high_value_ready".to_string(),
             risk_tags: Vec::new(),
             why_it_is_worth_doing: "High attention evidence".to_string(),
             biggest_risk: "none".to_string(),

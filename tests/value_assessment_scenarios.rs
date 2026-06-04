@@ -1,14 +1,15 @@
 use chrono::{Duration, Utc};
+use patchbay_cli::competition::CompetitionFacts;
 use patchbay_cli::config::ProfileConfig;
 use patchbay_cli::github::GitHubIssue;
 use patchbay_cli::github_enrichment::{EnrichedIssue, TimestampedSample};
 use patchbay_cli::value_scoring::{
-    aggregate_signals, assess_issue, RecommendationCategory, RiskTag, ScoreBand,
+    aggregate_signals, assess_issue, GateStatus, RecommendationCategory, RiskTag, ScoreBand,
 };
 use patchbay_cli::value_signals::{SignalAxis, ValueSignal, ValueSignalKind};
 
 #[test]
-fn high_attention_and_high_execution_classifies_agent_ready() {
+fn high_influence_and_high_execution_classifies_high_value_ready() {
     let enriched = fixture()
         .stars(2_500)
         .forks(220)
@@ -20,11 +21,11 @@ fn high_attention_and_high_execution_classifies_agent_ready() {
 
     let assessment = assess_issue(&enriched, &matching_profile());
 
-    assert_eq!(assessment.attention_band, ScoreBand::High);
+    assert_eq!(assessment.gates.repo_influence.status, GateStatus::Pass);
     assert_eq!(assessment.execution_band, ScoreBand::High);
     assert_eq!(
         assessment.recommendation_category,
-        RecommendationCategory::AgentReadyHighValue
+        RecommendationCategory::HighValueReady
     );
     assert_has_signal(&assessment.signals, ValueSignalKind::EstablishedImpact);
     assert_has_signal(&assessment.signals, ValueSignalKind::GrowthMomentum);
@@ -32,7 +33,7 @@ fn high_attention_and_high_execution_classifies_agent_ready() {
 }
 
 #[test]
-fn high_attention_low_depth_keeps_visibility_but_marks_risks() {
+fn low_depth_filters_before_high_value_gate() {
     let enriched = fixture()
         .stars(2_500)
         .forks(220)
@@ -46,10 +47,10 @@ fn high_attention_low_depth_keeps_visibility_but_marks_risks() {
 
     let assessment = assess_issue(&enriched, &matching_profile());
 
-    assert_eq!(assessment.attention_band, ScoreBand::High);
+    assert_eq!(assessment.gates.repo_influence.status, GateStatus::Pass);
     assert_eq!(
         assessment.recommendation_category,
-        RecommendationCategory::HighAttentionLowDepth
+        RecommendationCategory::FilteredLowDepth
     );
     assert!(assessment.risk_tags.contains(&RiskTag::NoCodeRequired));
     assert!(assessment.risk_tags.contains(&RiskTag::MicroContribution));
@@ -77,7 +78,7 @@ fn low_attention_but_clear_issue_is_niche_but_actionable() {
 }
 
 #[test]
-fn high_attention_with_template_noise_needs_triage() {
+fn fork_anomaly_and_template_noise_is_contested_or_low_trust() {
     let enriched = fixture()
         .stars(150)
         .forks(500)
@@ -94,10 +95,10 @@ fn high_attention_with_template_noise_needs_triage() {
 
     let assessment = assess_issue(&enriched, &matching_profile());
 
-    assert_eq!(assessment.attention_band, ScoreBand::High);
+    assert_eq!(assessment.gates.repo_influence.status, GateStatus::HardFail);
     assert_eq!(
         assessment.recommendation_category,
-        RecommendationCategory::NeedsTriage
+        RecommendationCategory::ContestedOrLowTrust
     );
     assert!(assessment.risk_tags.contains(&RiskTag::TemplateLike));
     assert!(assessment.risk_tags.contains(&RiskTag::EventNoise));
@@ -149,7 +150,7 @@ fn aggregate_signals_applies_axis_scores_and_formula() {
     assert_eq!(assessment.attention_score, 70);
     assert_eq!(assessment.execution_score, 50);
     assert_eq!(assessment.profile_fit_score, 50);
-    assert!(assessment.final_rank_score > 50);
+    assert!(assessment.final_rank_score >= 50);
 }
 
 fn fixture() -> EnrichedIssueFixture {
@@ -304,6 +305,7 @@ impl EnrichedIssueFixture {
             timestamp_samples("repo:stargazers.sample_recent_100", self.recent_stargazers);
         enriched.growth.newest_fork_sample =
             timestamp_samples("repo:forks.sample_newest_100", self.recent_forks);
+        enriched.competition = CompetitionFacts::default();
         enriched
     }
 }
