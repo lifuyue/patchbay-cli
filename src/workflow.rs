@@ -14,13 +14,12 @@ use crate::llm;
 use crate::llm_review;
 use crate::paths::PatchbayPaths;
 use crate::prepare_events::PrepareEventLog;
+use crate::prepare_gate::default_prepare_allowed;
 use crate::probe::SafeProbeRunner;
 use crate::readiness::assess_readiness;
 use crate::report::{self, DailyReport, FailedReportItem, PreparedReportItem};
 use crate::scoring::rank_issues;
-use crate::value_scoring::{
-    assess_issue, is_daily_prepare_candidate, RankedValueIssue, ValueAssessment,
-};
+use crate::value_scoring::{assess_issue, RankedValueIssue, ValueAssessment};
 use crate::workspace;
 
 const ENRICHED_SCOUT_CANDIDATE_LIMIT: usize = 40;
@@ -30,6 +29,49 @@ const COMPETITION_TIMELINE_CANDIDATE_LIMIT: usize = 20;
 pub enum PrepareOutcome {
     Prepared(Box<PreparedReportItem>),
     Failed(FailedReportItem),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PrepareOptions {
+    pub explicit_prepare: bool,
+    pub gate_bypass_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct IssueSelector {
+    pub issue: Option<String>,
+    pub url: Option<String>,
+}
+
+impl IssueSelector {
+    pub fn new(issue: Option<String>, url: Option<String>) -> Self {
+        Self { issue, url }
+    }
+
+    pub fn issue_ref(&self) -> Result<IssueRef> {
+        match (
+            normalize_optional(&self.issue),
+            normalize_optional(&self.url),
+        ) {
+            (Some(issue), None) => IssueRef::parse(&issue),
+            (None, Some(url)) => IssueRef::parse_url(&url),
+            (Some(_), Some(_)) => {
+                anyhow::bail!("pass either an issue reference or --url, not both")
+            }
+            (None, None) => {
+                anyhow::bail!(
+                    "pass owner/repo#123 or --url https://github.com/owner/repo/issues/123"
+                )
+            }
+        }
+    }
+}
+
+fn normalize_optional(value: &Option<String>) -> Option<String> {
+    value
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 pub async fn scout(
@@ -50,27 +92,38 @@ pub async fn scout(
     Ok(ranked)
 }
 
+pub async fn assess_issue_selection(
+    paths: &PatchbayPaths,
+    config: &Config,
+    selector: IssueSelector,
+    refresh: bool,
+) -> Result<RankedValueIssue> {
+    paths.ensure_layout()?;
+    let reference = selector.issue_ref()?;
+    let github = GitHubClient::new(config)?;
+    let issue = github.fetch_issue(&reference).await?;
+    let enrichment = GitHubEnrichmentClient::new(config)?;
+    Ok(enrich_issue_for_value(paths, config, &enrichment, issue, refresh).await)
+}
+
 pub async fn prepare_from_input(
     paths: &PatchbayPaths,
     config: &Config,
     issue: Option<String>,
     url: Option<String>,
 ) -> Result<PrepareOutcome> {
-    paths.ensure_layout()?;
-    let reference = match (issue, url) {
-        (Some(issue), None) => IssueRef::parse(&issue)?,
-        (None, Some(url)) => IssueRef::parse_url(&url)?,
-        (Some(_), Some(_)) => anyhow::bail!("pass either an issue reference or --url, not both"),
-        (None, None) => {
-            anyhow::bail!("pass owner/repo#123 or --url https://github.com/owner/repo/issues/123")
-        }
-    };
-
-    let github = GitHubClient::new(config)?;
-    let issue = github.fetch_issue(&reference).await?;
-    let enrichment = GitHubEnrichmentClient::new(config)?;
-    let ranked = enrich_issue_for_value(paths, config, &enrichment, issue, false).await;
-    prepare_value_issue(paths, config, ranked, true).await
+    let ranked =
+        assess_issue_selection(paths, config, IssueSelector::new(issue, url), false).await?;
+    prepare_value_issue_with_options(
+        paths,
+        config,
+        ranked,
+        PrepareOptions {
+            explicit_prepare: true,
+            gate_bypass_reason: None,
+        },
+    )
+    .await
 }
 
 pub async fn prepare_issue(
@@ -80,14 +133,23 @@ pub async fn prepare_issue(
 ) -> Result<PrepareOutcome> {
     let enrichment = GitHubEnrichmentClient::new(config)?;
     let ranked = enrich_issue_for_value(paths, config, &enrichment, issue, false).await;
-    prepare_value_issue(paths, config, ranked, true).await
+    prepare_value_issue_with_options(
+        paths,
+        config,
+        ranked,
+        PrepareOptions {
+            explicit_prepare: true,
+            gate_bypass_reason: None,
+        },
+    )
+    .await
 }
 
-pub async fn prepare_value_issue(
+pub async fn prepare_value_issue_with_options(
     paths: &PatchbayPaths,
     config: &Config,
     ranked: RankedValueIssue,
-    explicit_prepare: bool,
+    options: PrepareOptions,
 ) -> Result<PrepareOutcome> {
     let issue = ranked.issue.clone();
     let event_path = paths
@@ -103,12 +165,29 @@ pub async fn prepare_value_issue(
             Some(format!("Unable to initialize prepare event log: {error}")),
         ),
     };
+    if let (Some(events), Some(reason)) = (&events, &options.gate_bypass_reason) {
+        let _ = events.append(
+            "prepare_gate_bypassed",
+            &[
+                (
+                    "category",
+                    Value::String(ranked.value_assessment.recommendation_category.to_string()),
+                ),
+                ("reason", Value::String(reason.clone())),
+            ],
+        );
+    }
 
     match workspace::prepare_workspace(paths, &issue) {
         Ok(workspace) => {
             let mut workspace = workspace;
             if let Some(warning) = event_warning {
                 workspace.warnings.push(warning);
+            }
+            if let Some(reason) = &options.gate_bypass_reason {
+                workspace
+                    .warnings
+                    .push(format!("Prepare gate bypass: {reason}"));
             }
             if let Some(events) = &events {
                 let _ = events.append(
@@ -119,7 +198,7 @@ pub async fn prepare_value_issue(
                     ],
                 );
             }
-            if explicit_prepare && ranked.value_assessment.execution_score < 40 {
+            if options.explicit_prepare && ranked.value_assessment.execution_score < 40 {
                 workspace.warnings.push(format!(
                     "Explicit prepare bypassed low execution score {}",
                     ranked.value_assessment.execution_score
@@ -244,13 +323,23 @@ pub async fn daily_from_ranked(
         )? {
             continue;
         }
-        if !is_daily_prepare_candidate(&ranked_issue.value_assessment) {
+        if !default_prepare_allowed(ranked_issue.value_assessment.recommendation_category) {
             continue;
         }
 
         attempts += 1;
         let issue = ranked_issue.issue.clone();
-        match prepare_value_issue(paths, config, ranked_issue.clone(), false).await {
+        match prepare_value_issue_with_options(
+            paths,
+            config,
+            ranked_issue.clone(),
+            PrepareOptions {
+                explicit_prepare: false,
+                gate_bypass_reason: None,
+            },
+        )
+        .await
+        {
             Ok(PrepareOutcome::Prepared(item)) => report.prepared.push(*item),
             Ok(PrepareOutcome::Failed(item)) => report.failed.push(item),
             Err(error) => {

@@ -16,7 +16,7 @@ use patchbay_cli::paths::PatchbayPaths;
 use patchbay_cli::value_scoring::{
     RankedValueIssue, RecommendationCategory, ScoreBand, ValueAssessment,
 };
-use patchbay_cli::workflow::{self, prepare_value_issue};
+use patchbay_cli::workflow::{self, prepare_value_issue_with_options, PrepareOptions};
 use patchbay_cli::workspace::{git_available, prepare_workspace};
 use tempfile::tempdir;
 
@@ -184,9 +184,17 @@ async fn explicit_prepare_writes_low_execution_warning_and_assessment_fields() {
 
     let config = Config::default();
     let ranked = ranked_value(issue("owner/explicit", 7), 80, 20);
-    let outcome = prepare_value_issue(&paths, &config, ranked, true)
-        .await
-        .unwrap();
+    let outcome = prepare_value_issue_with_options(
+        &paths,
+        &config,
+        ranked,
+        PrepareOptions {
+            explicit_prepare: true,
+            gate_bypass_reason: None,
+        },
+    )
+    .await
+    .unwrap();
     let workflow::PrepareOutcome::Prepared(item) = outcome else {
         panic!("expected prepared outcome");
     };
@@ -219,9 +227,17 @@ async fn prepare_writes_agent_safe_runtime_artifacts_without_running_scripts() {
 
     let config = Config::default();
     let ranked = ranked_value(issue("owner/runtime", 9), 82, 72);
-    let outcome = prepare_value_issue(&paths, &config, ranked, true)
-        .await
-        .unwrap();
+    let outcome = prepare_value_issue_with_options(
+        &paths,
+        &config,
+        ranked,
+        PrepareOptions {
+            explicit_prepare: true,
+            gate_bypass_reason: None,
+        },
+    )
+    .await
+    .unwrap();
     let workflow::PrepareOutcome::Prepared(item) = outcome else {
         panic!("expected prepared outcome");
     };
@@ -309,9 +325,17 @@ async fn prepare_preserves_llm_summary_enhancement() {
     config.llm.api_key = "test-key".to_string();
     let ranked = ranked_value(issue("owner/llm", 8), 80, 60);
 
-    let outcome = prepare_value_issue(&paths, &config, ranked, true)
-        .await
-        .unwrap();
+    let outcome = prepare_value_issue_with_options(
+        &paths,
+        &config,
+        ranked,
+        PrepareOptions {
+            explicit_prepare: true,
+            gate_bypass_reason: None,
+        },
+    )
+    .await
+    .unwrap();
     handle.join().unwrap();
     let workflow::PrepareOutcome::Prepared(item) = outcome else {
         panic!("expected prepared outcome");
