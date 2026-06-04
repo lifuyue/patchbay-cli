@@ -130,15 +130,22 @@ fn start_enrichment_server() -> (String, thread::JoinHandle<()>) {
     let base_url = format!("http://{}", listener.local_addr().unwrap());
     let handle = thread::spawn(move || {
         let started = Instant::now();
+        let mut last_request_at = Instant::now();
         let mut served = 0usize;
-        while served < 6 && started.elapsed() < Duration::from_secs(5) {
+        while started.elapsed() < Duration::from_secs(5) {
+            if served >= 6 && last_request_at.elapsed() > Duration::from_millis(250) {
+                break;
+            }
             match listener.accept() {
                 Ok((mut stream, _)) => {
+                    last_request_at = Instant::now();
                     let mut buffer = [0u8; 4096];
                     let bytes_read = stream.read(&mut buffer).unwrap_or(0);
                     let request = String::from_utf8_lossy(&buffer[..bytes_read]);
                     let body = if request.starts_with("GET /repos/owner/repo/issues/12/comments") {
                         comments_body()
+                    } else if request.starts_with("GET /repos/owner/repo/issues/12/timeline") {
+                        "[]".to_string()
                     } else if request.starts_with("GET /repos/owner/repo/issues/12") {
                         issue_body()
                     } else if request.starts_with("GET /repos/owner/repo/stargazers") {
@@ -169,10 +176,15 @@ fn start_tail_sampling_server() -> (String, thread::JoinHandle<()>) {
     let base_url = format!("http://{}", listener.local_addr().unwrap());
     let handle = thread::spawn(move || {
         let started = Instant::now();
+        let mut last_request_at = Instant::now();
         let mut served = 0usize;
-        while served < 7 && started.elapsed() < Duration::from_secs(5) {
+        while started.elapsed() < Duration::from_secs(5) {
+            if served >= 7 && last_request_at.elapsed() > Duration::from_millis(250) {
+                break;
+            }
             match listener.accept() {
                 Ok((mut stream, _)) => {
+                    last_request_at = Instant::now();
                     let mut buffer = [0u8; 4096];
                     let bytes_read = stream.read(&mut buffer).unwrap_or(0);
                     let request = String::from_utf8_lossy(&buffer[..bytes_read]);
@@ -182,6 +194,8 @@ fn start_tail_sampling_server() -> (String, thread::JoinHandle<()>) {
                         } else {
                             recent_comment_page_body()
                         }
+                    } else if request.starts_with("GET /repos/owner/repo/issues/12/timeline") {
+                        "[]".to_string()
                     } else if request.starts_with("GET /repos/owner/repo/issues/12") {
                         tail_issue_body()
                     } else if request.starts_with("GET /repos/owner/repo/stargazers") {

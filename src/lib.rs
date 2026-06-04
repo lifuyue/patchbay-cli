@@ -1,5 +1,6 @@
 pub mod agent_policy;
 pub mod cli;
+pub mod competition;
 pub mod config;
 pub mod context_pack;
 pub mod doctor;
@@ -18,6 +19,9 @@ pub mod readiness;
 pub mod repo_scan;
 pub mod report;
 pub mod scoring;
+pub mod value_gates;
+pub mod value_model;
+pub mod value_scores;
 pub mod value_scoring;
 pub mod value_signals;
 pub mod workflow;

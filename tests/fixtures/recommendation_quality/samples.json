@@ -25,7 +25,7 @@
       "expected": {
         "attention_band": "high",
         "execution_band": "low",
-        "category": "high_attention_low_depth",
+        "category": "filtered_low_depth",
         "required_risk_tags": ["no_code_required", "micro_contribution", "content_fill"],
         "forbidden_risk_tags": []
       }
@@ -55,7 +55,7 @@
       "expected": {
         "attention_band": "high",
         "execution_band": "low",
-        "category": "high_attention_low_depth",
+        "category": "filtered_low_depth",
         "required_risk_tags": ["no_code_required", "micro_contribution", "content_fill"],
         "forbidden_risk_tags": []
       }
@@ -83,10 +83,10 @@
         "topics": ["typescript", "developer-tools"]
       },
       "expected": {
-        "attention_band": "high",
+        "attention_band": "low",
         "execution_band": "high",
-        "category": "agent_ready_high_value",
-        "required_risk_tags": [],
+        "category": "contested_or_low_trust",
+        "required_risk_tags": ["fork_star_anomaly", "low_trust_repo"],
         "forbidden_risk_tags": ["no_code_required", "micro_contribution"]
       }
     },
@@ -113,10 +113,10 @@
         "topics": ["typescript", "developer-tools"]
       },
       "expected": {
-        "attention_band": "high",
+        "attention_band": "low",
         "execution_band": "high",
-        "category": "agent_ready_high_value",
-        "required_risk_tags": [],
+        "category": "contested_or_low_trust",
+        "required_risk_tags": ["fork_star_anomaly", "low_trust_repo"],
         "forbidden_risk_tags": ["no_code_required", "micro_contribution"]
       }
     },
@@ -143,10 +143,10 @@
         "topics": ["typescript", "developer-tools"]
       },
       "expected": {
-        "attention_band": "high",
-        "execution_band": "medium",
-        "category": "high_attention",
-        "required_risk_tags": ["weak_validation_path"],
+        "attention_band": "low",
+        "execution_band": "low",
+        "category": "contested_or_low_trust",
+        "required_risk_tags": ["weak_validation_path", "fork_star_anomaly", "low_trust_repo"],
         "forbidden_risk_tags": ["no_code_required"]
       }
     },
@@ -173,9 +173,9 @@
         "topics": ["typescript", "ai"]
       },
       "expected": {
-        "attention_band": "high",
-        "execution_band": "medium",
-        "category": "high_attention_low_depth",
+        "attention_band": "low",
+        "execution_band": "low",
+        "category": "filtered_low_depth",
         "required_risk_tags": ["thin_task"],
         "forbidden_risk_tags": ["no_code_required"]
       }
@@ -203,10 +203,10 @@
         "topics": ["typescript", "tests"]
       },
       "expected": {
-        "attention_band": "high",
-        "execution_band": "high",
-        "category": "needs_triage",
-        "required_risk_tags": ["template_like", "event_noise", "high_triage_load"],
+        "attention_band": "low",
+        "execution_band": "medium",
+        "category": "contested_or_low_trust",
+        "required_risk_tags": ["template_like", "event_noise", "high_triage_load", "fork_star_anomaly", "low_trust_repo"],
         "forbidden_risk_tags": ["no_code_required"]
       }
     },
@@ -217,7 +217,7 @@
         "repo_name": "context-drift",
         "number": 4,
         "title": "Document --min-confidence in the README CLI options",
-        "body": "Problem: README examples show npx context-drift check --changed src/components/user_profile_card.tsx --min-confidence 0.9, but the CLI options list documents only --base, --changed, and --format. Impact: users do not know valid range, default value, or effect. Suggested Fix: add --min-confidence <number> to README options list.",
+        "body": "Problem: README examples show npx context-drift check --changed src/components/user_profile_card.tsx --min-confidence 0.9, but the CLI options list documents only --base, --changed, and --format. Expected behavior: README documents the valid range, default value, and effect. Suggested Fix: add --min-confidence <number> to README options list. Verify by running the docs test or README lint.",
         "labels": ["documentation", "good first issue"],
         "repo_description": "CLI tool for detecting context drift",
         "repo_stars": 0

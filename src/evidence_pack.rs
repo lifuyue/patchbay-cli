@@ -74,6 +74,20 @@ pub fn build_evidence_pack(
         }
     }
 
+    for item in &assessment.evidence {
+        let evidence_item = EvidenceItem {
+            summary: item.summary.clone(),
+            source_refs: item.evidence_refs.clone(),
+        };
+        if item.summary.contains("Execution quality") || item.summary.contains("Profile fit") {
+            pack.why_this_is_agent_ready.push(evidence_item);
+        } else if item.summary.contains("risk") || item.summary.contains("hard_fail") {
+            pack.risk_factors.push(evidence_item);
+        } else {
+            pack.why_this_has_high_attention.push(evidence_item);
+        }
+    }
+
     if let Some(scan) = scan {
         if !scan.candidate_files.is_empty() {
             pack.why_this_is_agent_ready.push(EvidenceItem {

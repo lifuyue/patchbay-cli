@@ -163,6 +163,7 @@ mod tests {
             readiness: ExecutionReadiness::default(),
             value_assessment: ValueAssessment {
                 final_rank_score: 0,
+                category: RecommendationCategory::NeedsTriage,
                 attention_score: 0,
                 execution_score: 0,
                 profile_fit_score: 0,
@@ -174,6 +175,7 @@ mod tests {
                 risk_tags: vec![],
                 missing_evidence: vec![],
                 explanation: vec![],
+                ..ValueAssessment::default()
             },
             evidence_pack: EvidencePack::empty(),
             instructions: HandoffInstructions::default(),

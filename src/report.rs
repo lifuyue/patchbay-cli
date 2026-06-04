@@ -80,11 +80,12 @@ impl DailyReport {
             lines.push("- No prepared tasks today".to_string());
         } else {
             for category in [
-                RecommendationCategory::AgentReadyHighValue,
-                RecommendationCategory::HighAttention,
-                RecommendationCategory::HighAttentionLowDepth,
+                RecommendationCategory::HighValueReady,
+                RecommendationCategory::HighValueNeedsScoping,
                 RecommendationCategory::NicheButActionable,
+                RecommendationCategory::ContestedOrLowTrust,
                 RecommendationCategory::NeedsTriage,
+                RecommendationCategory::FilteredLowDepth,
             ] {
                 push_category_group(&mut lines, category, &self.prepared);
             }
@@ -206,10 +207,11 @@ fn push_category_group(
 
 fn category_heading(category: RecommendationCategory) -> &'static str {
     match category {
-        RecommendationCategory::AgentReadyHighValue => "Agent-Ready High Value Tasks",
-        RecommendationCategory::HighAttention => "High Attention Tasks",
-        RecommendationCategory::HighAttentionLowDepth => "High Attention, Low Depth",
+        RecommendationCategory::HighValueReady => "High-value Ready",
+        RecommendationCategory::HighValueNeedsScoping => "High-value Needs Scoping",
         RecommendationCategory::NicheButActionable => "Niche but Actionable",
+        RecommendationCategory::ContestedOrLowTrust => "Contested or Low Trust",
+        RecommendationCategory::FilteredLowDepth => "Filtered Low Depth",
         RecommendationCategory::NeedsTriage => "Needs Triage",
     }
 }
@@ -252,7 +254,7 @@ mod tests {
                 execution_score: 85,
                 profile_fit_score: 50,
                 risk_penalty: 5,
-                recommendation_category: "agent_ready_high_value".to_string(),
+                recommendation_category: "high_value_ready".to_string(),
                 risk_tags: Vec::new(),
                 why_it_is_worth_doing: "High value evidence".to_string(),
                 biggest_risk: "none".to_string(),
@@ -273,6 +275,6 @@ mod tests {
 
         let markdown = report.render_markdown();
         assert!(markdown.contains("Prepared handoff count: 1"));
-        assert!(markdown.contains("Agent-Ready High Value Tasks"));
+        assert!(markdown.contains("High-value Ready"));
     }
 }

@@ -6,6 +6,7 @@ use chrono::{DateTime, Duration, Utc};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 
+use crate::competition::{assess_competition, CompetitionFacts, TimelineIssueReference};
 use crate::config::Config;
 use crate::github::GitHubIssue;
 use crate::paths::{atomic_write, PatchbayPaths};
@@ -15,6 +16,7 @@ const ENRICHMENT_HTTP_TIMEOUT: StdDuration = StdDuration::from_secs(10);
 const RECENT_STARGAZER_SAMPLE_LIMIT: usize = 100;
 const NEWEST_FORK_SAMPLE_LIMIT: usize = 100;
 const ISSUE_COMMENT_LIMIT: usize = 30;
+const ISSUE_TIMELINE_LIMIT: usize = 100;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EnrichedIssue {
@@ -23,6 +25,8 @@ pub struct EnrichedIssue {
     pub activity: EnrichedActivityFacts,
     pub participants: EnrichedParticipants,
     pub comments: Vec<EnrichedComment>,
+    #[serde(default = "default_competition_facts")]
+    pub competition: CompetitionFacts,
     pub growth: EnrichedGrowthFacts,
     pub warnings: Vec<String>,
     pub source_fetched_at: String,
@@ -153,6 +157,24 @@ struct ForkApiResponse {
     owner: Option<UserApiResponse>,
 }
 
+#[derive(Debug, Deserialize)]
+struct TimelineApiResponse {
+    event: Option<String>,
+    created_at: Option<String>,
+    source: Option<TimelineSourceApiResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TimelineSourceApiResponse {
+    issue: Option<TimelineIssueApiResponse>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TimelineIssueApiResponse {
+    state: Option<String>,
+    pull_request: Option<serde_json::Value>,
+}
+
 pub struct GitHubEnrichmentClient {
     http: reqwest::Client,
     token: String,
@@ -185,9 +207,22 @@ impl GitHubEnrichmentClient {
         issue: &GitHubIssue,
         refresh: bool,
     ) -> EnrichedIssue {
+        self.enrich_issue_with_options(paths, issue, refresh, true)
+            .await
+    }
+
+    pub async fn enrich_issue_with_options(
+        &self,
+        paths: &PatchbayPaths,
+        issue: &GitHubIssue,
+        refresh: bool,
+        include_competition_timeline: bool,
+    ) -> EnrichedIssue {
         if !refresh {
             if let Ok(Some(cached)) = load_cached_enrichment(paths, issue) {
-                return cached;
+                if !include_competition_timeline || !competition_timeline_missing(&cached) {
+                    return cached;
+                }
             }
         }
 
@@ -244,6 +279,33 @@ impl GitHubEnrichmentClient {
             Err(error) => enriched
                 .warnings
                 .push(format!("Issue comments enrichment failed: {error}")),
+        }
+
+        let comment_bodies = enriched
+            .comments
+            .iter()
+            .map(|comment| comment.body_excerpt.clone())
+            .collect::<Vec<_>>();
+        if include_competition_timeline {
+            match self.fetch_timeline_refs(&owner, &repo, issue.number).await {
+                Ok(timeline_refs) => {
+                    enriched.competition =
+                        assess_competition(&timeline_refs, &comment_bodies, Vec::new());
+                }
+                Err(error) => {
+                    enriched.competition = assess_competition(
+                        &[],
+                        &comment_bodies,
+                        vec![format!("Competition timeline enrichment failed: {error}")],
+                    );
+                }
+            }
+        } else {
+            enriched.competition = assess_competition(
+                &[],
+                &comment_bodies,
+                vec!["Competition timeline evidence was not fetched".to_string()],
+            );
         }
 
         match self
@@ -452,6 +514,45 @@ impl GitHubEnrichmentClient {
             .collect())
     }
 
+    async fn fetch_timeline_refs(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<TimelineIssueReference>> {
+        let response = self
+            .authorized(
+                self.http
+                    .get(self.api_url(&format!("/repos/{owner}/{repo}/issues/{number}/timeline")))
+                    .header("accept", "application/vnd.github+json")
+                    .query(&[("per_page", ISSUE_TIMELINE_LIMIT.to_string())]),
+            )
+            .send()
+            .await?;
+        let events = require_success(response)
+            .await?
+            .json::<Vec<TimelineApiResponse>>()
+            .await?;
+
+        Ok(events
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, event)| {
+                if event.event.as_deref() != Some("cross-referenced") {
+                    return None;
+                }
+                let issue = event.source?.issue?;
+                Some(TimelineIssueReference {
+                    source_ref: format!("issue:timeline.{index}"),
+                    state: issue.state,
+                    is_pull_request: issue.pull_request.is_some(),
+                    created_at: event.created_at,
+                })
+            })
+            .filter(|item| item.is_pull_request)
+            .collect())
+    }
+
     fn authorized(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         if self.token.trim().is_empty() {
             request
@@ -511,6 +612,7 @@ impl EnrichedIssue {
                 maintainer_commenters: Vec::new(),
             },
             comments: Vec::new(),
+            competition: CompetitionFacts::missing_timeline(),
             growth: EnrichedGrowthFacts {
                 recent_stargazer_sample: Vec::new(),
                 newest_fork_sample: Vec::new(),
@@ -577,6 +679,17 @@ pub fn star_velocity(sample: &[TimestampedSample], days: i64, now: DateTime<Utc>
 
 pub fn fork_velocity(sample: &[TimestampedSample], days: i64, now: DateTime<Utc>) -> usize {
     star_velocity(sample, days, now)
+}
+
+fn default_competition_facts() -> CompetitionFacts {
+    CompetitionFacts::missing_timeline()
+}
+
+fn competition_timeline_missing(enriched: &EnrichedIssue) -> bool {
+    enriched.competition.warnings.iter().any(|warning| {
+        warning.contains("timeline evidence was not fetched")
+            || warning.contains("timeline enrichment failed")
+    })
 }
 
 fn load_cached_enrichment(

@@ -1,4 +1,5 @@
 use chrono::Utc;
+use patchbay_cli::competition::CompetitionFacts;
 use patchbay_cli::config::ProfileConfig;
 use patchbay_cli::github::GitHubIssue;
 use patchbay_cli::github_enrichment::{EnrichedIssue, TimestampedSample};
@@ -93,21 +94,21 @@ fn recommendation_quality_samples_match_product_rubric() {
             );
         }
 
-        if assessment.recommendation_category == RecommendationCategory::AgentReadyHighValue {
+        if assessment.recommendation_category == RecommendationCategory::HighValueReady {
             assert_eq!(
                 assessment.execution_band,
                 ScoreBand::High,
-                "{} agent-ready recommendation must have high execution",
+                "{} high-value ready recommendation must have high execution",
+                sample.id
+            );
+            assert_eq!(
+                assessment.gates.repo_influence.status.to_string(),
+                "pass",
+                "{} high-value ready recommendation must pass repo influence gate",
                 sample.id
             );
         }
-        if assessment.recommendation_category == RecommendationCategory::HighAttentionLowDepth {
-            assert_eq!(
-                assessment.attention_band,
-                ScoreBand::High,
-                "{} low-depth recommendation must have high attention",
-                sample.id
-            );
+        if assessment.recommendation_category == RecommendationCategory::FilteredLowDepth {
             assert!(
                 assessment.risk_tags.iter().any(|tag| {
                     matches!(
@@ -155,6 +156,7 @@ impl QualitySample {
         enriched.activity.recent_issue_activity = true;
         enriched.activity.recent_repo_activity = self.enrichment.recent_repo_activity;
         enriched.activity.maintainer_recent_response = self.enrichment.maintainer_attention;
+        enriched.competition = CompetitionFacts::default();
         enriched.growth.recent_stargazer_sample = timestamp_samples(
             "repo:stargazers.sample_recent_100",
             self.enrichment.recent_stars,

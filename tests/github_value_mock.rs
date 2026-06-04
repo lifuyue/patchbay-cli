@@ -8,7 +8,7 @@ use std::time::{Duration as StdDuration, Instant};
 use chrono::{Duration, Utc};
 use patchbay_cli::config::Config;
 use patchbay_cli::paths::PatchbayPaths;
-use patchbay_cli::value_scoring::{RecommendationCategory, RiskTag, ScoreBand};
+use patchbay_cli::value_scoring::{GateStatus, RecommendationCategory, RiskTag};
 use patchbay_cli::value_signals::ValueSignalKind;
 use patchbay_cli::workflow;
 use tempfile::tempdir;
@@ -36,10 +36,13 @@ async fn scout_reorders_candidates_after_value_enrichment() {
 
     assert_eq!(ranked.len(), 3);
     assert_eq!(ranked[0].issue.repo_full_name, "owner/growth");
-    assert_eq!(ranked[0].value_assessment.attention_band, ScoreBand::High);
-    assert_ne!(
+    assert_eq!(
         ranked[0].value_assessment.recommendation_category,
-        RecommendationCategory::NeedsTriage
+        RecommendationCategory::NicheButActionable
+    );
+    assert_eq!(
+        ranked[0].value_assessment.gates.repo_influence.status,
+        GateStatus::SoftFail
     );
     assert!(ranked[0]
         .value_assessment
@@ -84,7 +87,7 @@ fn start_mock_value_github() -> (String, thread::JoinHandle<()>) {
         let started = Instant::now();
         let mut served = 0usize;
 
-        while served < 20 && started.elapsed() < StdDuration::from_secs(5) {
+        while served < 30 && started.elapsed() < StdDuration::from_secs(5) {
             match listener.accept() {
                 Ok((mut stream, _)) => {
                     let mut buffer = [0u8; 4096];
@@ -126,6 +129,13 @@ fn response_body(request: &str, base_url: &str, search_index: usize) -> String {
         return comments_body("MEMBER", "growth-maintainer");
     }
     if request.contains("/repos/owner/impact/issues/3/comments") {
+        return "[]".to_string();
+    }
+
+    if request.contains("/repos/owner/noisy/issues/1/timeline")
+        || request.contains("/repos/owner/growth/issues/2/timeline")
+        || request.contains("/repos/owner/impact/issues/3/timeline")
+    {
         return "[]".to_string();
     }
 
@@ -188,7 +198,7 @@ fn search_body(base_url: &str) -> String {
       "id": 2,
       "number": 2,
       "title": "Improve dependency resolver diagnostics",
-      "body": "The resolver returns an unclear panic. Expected behavior is a helpful diagnostic in src/resolver.rs, actual behavior is a panic during package install.",
+      "body": "Steps to reproduce: run the CLI package install command with a missing dependency. The resolver returns an unclear panic. Expected behavior is a helpful diagnostic in src/resolver.rs, actual behavior is a panic during package install. Suggested fix: guard the empty resolver result and verify with cargo test.",
       "html_url": "https://github.com/owner/growth/issues/2",
       "repository_url": "{base_url}/repos/owner/growth",
       "labels": [{{ "name": "good first issue" }}],
@@ -232,12 +242,12 @@ fn growth_repo_body() -> String {
     repo_body(RepoBody {
         full_name: "owner/growth",
         name: "growth",
-        description: "Fast package manager",
+        description: "Rust CLI package manager developer tools",
         stars: 80,
         forks: 4,
         open_issues: 12,
         pushed_at: Utc::now().to_rfc3339(),
-        topics: vec!["package-manager"],
+        topics: vec!["package-manager", "cli", "rust"],
     })
 }
 
