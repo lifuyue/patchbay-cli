@@ -116,14 +116,42 @@ pub fn detect_comment_competition_markers(body: &str) -> CommentCompetitionMarke
     let normalized = normalize(body);
     CommentCompetitionMarkers {
         attempt: body.contains("/attempt") || normalized.contains(" attempt "),
-        claim: body.contains("/claim") || normalized.contains(" claim "),
+        claim: body.contains("/claim")
+            || normalized.contains(" claim ")
+            || normalized.contains("can i work on this")
+            || normalized.contains("could i work on this")
+            || normalized.contains("interested in contributing")
+            || normalized.contains("interested in working on this")
+            || normalized.contains("external contributions be welcome")
+            || normalized.contains("happy to implement")
+            || normalized.contains("i d like to work on this")
+            || normalized.contains("i would like to work on this")
+            || normalized.contains("i would love to work on this")
+            || normalized.contains("i d like to take a look")
+            || normalized.contains("i would like to take a look")
+            || normalized.contains("i d like to fix this")
+            || normalized.contains("i would like to fix this")
+            || normalized.contains("pick this up")
+            || normalized.contains("picked this up")
+            || normalized.contains("take this up")
+            || normalized.contains("please assign me")
+            || normalized.contains("puedo trabajar en este")
+            || normalized.contains("puedo tomar este"),
         working: normalized.contains("working on this")
             || normalized.contains("i am working on this")
-            || normalized.contains("i m working on this"),
+            || normalized.contains("i m working on this")
+            || normalized.contains("i will look into it")
+            || normalized.contains("i ll look into it")
+            || normalized.contains("i was able to replicate"),
         fix_submitted: normalized.contains("fix submitted in pr")
             || normalized.contains("submitted in pr")
             || normalized.contains("opened a pr")
-            || normalized.contains("pull request submitted"),
+            || normalized.contains("pull request submitted")
+            || normalized.contains("fixed by pr")
+            || normalized.contains("fixed by #")
+            || normalized.contains("confirmed fixed")
+            || normalized.contains("no longer reproduce")
+            || normalized.contains("should we close this issue since fixed"),
     }
 }
 
@@ -192,5 +220,46 @@ mod tests {
         assert!(markers.claim);
         assert!(markers.fix_submitted);
         assert!(!markers.working);
+    }
+
+    #[test]
+    fn detects_natural_language_claim_markers() {
+        for body in [
+            "hey, would it be ok if I picked this up?",
+            "Can I work on this?",
+            "Hi! I'd like to take a look.",
+            "I'd like to fix this. Please assign me.",
+            "Hi! I'm interested in contributing to this issue.",
+            "If contributions are welcome, I'd be happy to implement this.",
+            "Puedo trabajar en este Issue?",
+        ] {
+            let markers = detect_comment_competition_markers(body);
+            assert!(markers.claim, "{body}");
+        }
+    }
+
+    #[test]
+    fn detects_natural_language_working_markers() {
+        for body in [
+            "I will look into it",
+            "I'll look into it.",
+            "I was able to replicate the issue locally.",
+        ] {
+            let markers = detect_comment_competition_markers(body);
+            assert!(markers.working, "{body}");
+        }
+    }
+
+    #[test]
+    fn detects_fixed_or_no_longer_reproducible_markers() {
+        for body in [
+            "This issue has been fixed by PR #3457.",
+            "Confirmed fixed by #3457.",
+            "I can no longer reproduce this on current main.",
+            "Should we close this issue since fixed?",
+        ] {
+            let markers = detect_comment_competition_markers(body);
+            assert!(markers.fix_submitted, "{body}");
+        }
     }
 }

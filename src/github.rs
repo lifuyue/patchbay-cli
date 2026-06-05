@@ -3,18 +3,39 @@ use std::fs;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
+use futures::stream::{self, StreamExt};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::config::Config;
+use crate::config::{Config, ProfileConfig};
+use crate::discovery::{
+    gfi_repositories, merge_candidates, overlay_repositories, DiscoveryCandidate, RepoTrustTier,
+    TrustedRepository,
+};
 use crate::errors::IssueFinderError;
 use crate::paths::{atomic_write, IssueFinderPaths};
 
 const SEARCH_CACHE_TTL_MINUTES: i64 = 10;
-const SEARCH_PER_LABEL_LIMIT: usize = 50;
+const TRUSTED_OVERLAY_REPO_REQUEST_LIMIT: usize = 15;
+const GFI_REPO_REQUEST_LIMIT: usize = 30;
+const GLOBAL_SEARCH_REQUEST_LIMIT: usize = 20;
+const TRUSTED_OVERLAY_REPO_CANDIDATE_LIMIT: usize = 8;
+const GFI_REPO_CANDIDATE_LIMIT: usize = 4;
+const TRUSTED_LABEL_PER_PAGE: usize = 8;
+const GLOBAL_SEARCH_PER_PAGE: usize = 30;
+const DISCOVERY_SEARCH_CONCURRENCY_LIMIT: usize = 4;
 
-const DISCOVERY_LABELS: [&str; 2] = ["good first issue", "good-first-issue"];
+const BEGINNER_LABELS: [&str; 8] = [
+    "good first issue",
+    "good-first-issue",
+    "beginner",
+    "beginner-friendly",
+    "easy",
+    "starter",
+    "help wanted",
+    "low-hanging-fruit",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IssueRef {
@@ -97,9 +118,9 @@ pub struct GitHubIssue {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct IssueCachePayload {
+struct DiscoveryCachePayload {
     fetched_at: DateTime<Utc>,
-    issues: Vec<GitHubIssue>,
+    candidates: Vec<DiscoveryCandidate>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,7 +158,6 @@ struct RepoResponse {
     name: String,
     description: Option<String>,
     stargazers_count: Option<u64>,
-    archived: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -162,7 +182,6 @@ struct RepoMetadata {
     name: String,
     description: String,
     stars: u64,
-    archived: bool,
 }
 
 pub struct GitHubClient {
@@ -189,35 +208,142 @@ impl GitHubClient {
         paths: &IssueFinderPaths,
         refresh: bool,
     ) -> Result<Vec<GitHubIssue>> {
+        let profile = Config::default().profile;
+        Ok(self
+            .discover_candidates(paths, refresh, &profile)
+            .await?
+            .into_iter()
+            .map(|candidate| candidate.issue)
+            .collect())
+    }
+
+    pub async fn discover_candidates(
+        &self,
+        paths: &IssueFinderPaths,
+        refresh: bool,
+        profile: &ProfileConfig,
+    ) -> Result<Vec<DiscoveryCandidate>> {
         if !refresh {
-            if let Some(cached) = load_cached_issues(paths)? {
+            if let Some(cached) = load_cached_candidates(paths)? {
                 return Ok(cached);
             }
         }
 
-        let mut issues = Vec::new();
-        let mut seen = HashSet::new();
-        let mut repo_cache = HashMap::new();
+        let mut lanes = Vec::new();
+        lanes.extend(
+            overlay_repositories()?
+                .into_iter()
+                .take(TRUSTED_OVERLAY_REPO_REQUEST_LIMIT)
+                .map(|repository| {
+                    SearchLaneRequest::trusted(repository, RepoTrustTier::OverlayTrusted)
+                }),
+        );
 
-        for label in DISCOVERY_LABELS {
-            let query = build_search_query(label);
-            let per_page = SEARCH_PER_LABEL_LIMIT.to_string();
-            let url = self.api_url("/search/issues");
+        lanes.extend(
+            gfi_repositories(profile, GFI_REPO_REQUEST_LIMIT)?
+                .into_iter()
+                .map(|repository| {
+                    SearchLaneRequest::trusted(repository, RepoTrustTier::GfiTrusted)
+                }),
+        );
+
+        lanes.extend(
+            global_search_lanes(profile)
+                .into_iter()
+                .take(GLOBAL_SEARCH_REQUEST_LIMIT)
+                .map(SearchLaneRequest::global),
+        );
+
+        let lane_results = stream::iter(
+            lanes
+                .into_iter()
+                .map(|lane| async move { self.fetch_lane_candidates(lane, profile).await.ok() }),
+        )
+        .buffer_unordered(DISCOVERY_SEARCH_CONCURRENCY_LIMIT)
+        .collect::<Vec<_>>()
+        .await;
+
+        let mut candidates = Vec::new();
+        for mut lane_candidates in lane_results.into_iter().flatten() {
+            candidates.append(&mut lane_candidates);
+        }
+
+        let candidates = merge_candidates(candidates, profile);
+        save_cached_candidates(paths, &candidates)?;
+        Ok(candidates)
+    }
+
+    async fn fetch_lane_candidates(
+        &self,
+        lane: SearchLaneRequest,
+        profile: &ProfileConfig,
+    ) -> Result<Vec<DiscoveryCandidate>> {
+        match lane {
+            SearchLaneRequest::TrustedRepo {
+                id,
+                repository,
+                trust_tier,
+                candidate_limit,
+            } => {
+                self.list_trusted_repository_lane(
+                    &repository,
+                    &id,
+                    trust_tier,
+                    candidate_limit,
+                    profile,
+                )
+                .await
+            }
+            SearchLaneRequest::Global {
+                id,
+                query,
+                per_page,
+            } => {
+                self.search_lane(&query, per_page, &id, RepoTrustTier::Global, profile)
+                    .await
+            }
+        }
+    }
+
+    async fn list_trusted_repository_lane(
+        &self,
+        repository: &TrustedRepository,
+        lane_id: &str,
+        trust_tier: RepoTrustTier,
+        candidate_limit: usize,
+        profile: &ProfileConfig,
+    ) -> Result<Vec<DiscoveryCandidate>> {
+        let mut candidates = Vec::new();
+        let mut seen = HashSet::new();
+
+        for label in BEGINNER_LABELS {
+            if candidates.len() >= candidate_limit {
+                break;
+            }
+
+            let per_page = TRUSTED_LABEL_PER_PAGE.to_string();
+            let url = self.api_url(&format!(
+                "/repos/{}/{}/issues",
+                repository.owner, repository.name
+            ));
             let response = self
                 .authorized(self.http.get(url))
                 .query(&[
-                    ("q", query.as_str()),
+                    ("state", "open"),
+                    ("labels", label),
                     ("sort", "updated"),
-                    ("order", "desc"),
+                    ("direction", "desc"),
                     ("per_page", per_page.as_str()),
                 ])
                 .send()
                 .await?;
-
             let response = require_success(response).await?;
-            let payload = response.json::<SearchResponse>().await?;
+            let issues = response.json::<Vec<IssueResponse>>().await?;
 
-            for item in payload.items {
+            for item in issues {
+                if candidates.len() >= candidate_limit {
+                    break;
+                }
                 if !should_include_issue(
                     item.pull_request.is_some(),
                     item.locked,
@@ -231,47 +357,102 @@ impl GitHubClient {
                     continue;
                 }
 
-                let (owner, repo) = parse_repo_api_url(&item.repository_url)?;
-                let repo_full_name = format!("{owner}/{repo}");
-                let issue_key = format!("{}#{}", repo_full_name, item.number);
-                if !seen.insert(issue_key) {
+                let key = format!("{}#{}", repository.full_name(), item.number);
+                if !seen.insert(key) {
                     continue;
                 }
 
-                let metadata = self
-                    .repo_metadata(&owner, &repo, &mut repo_cache)
-                    .await
-                    .unwrap_or_else(|_| RepoMetadata {
-                        full_name: repo_full_name.clone(),
-                        name: repo.clone(),
-                        description: String::new(),
-                        stars: 0,
-                        archived: false,
-                    });
-                if metadata.archived {
-                    continue;
-                }
-
-                issues.push(GitHubIssue {
+                let issue = GitHubIssue {
                     id: item.id,
                     number: item.number,
                     title: item.title,
                     body: item.body.unwrap_or_default(),
                     labels: extract_label_names(&item.labels),
                     url: item.html_url,
-                    repo_full_name: metadata.full_name,
-                    repo_name: metadata.name,
-                    repo_description: metadata.description,
-                    repo_stars: metadata.stars,
+                    repo_full_name: repository.full_name(),
+                    repo_name: repository.name.clone(),
+                    repo_description: String::new(),
+                    repo_stars: 0,
                     created_at: item.created_at,
                     updated_at: item.updated_at,
-                });
+                };
+                candidates.push(DiscoveryCandidate::new(
+                    issue,
+                    lane_id.to_string(),
+                    trust_tier,
+                    profile,
+                ));
             }
         }
 
-        issues.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
-        save_cached_issues(paths, &issues)?;
-        Ok(issues)
+        Ok(candidates)
+    }
+
+    async fn search_lane(
+        &self,
+        query: &str,
+        per_page: usize,
+        lane_id: &str,
+        trust_tier: RepoTrustTier,
+        profile: &ProfileConfig,
+    ) -> Result<Vec<DiscoveryCandidate>> {
+        let per_page = per_page.to_string();
+        let url = self.api_url("/search/issues");
+        let response = self
+            .authorized(self.http.get(url))
+            .query(&[
+                ("q", query),
+                ("sort", "updated"),
+                ("order", "desc"),
+                ("per_page", per_page.as_str()),
+            ])
+            .send()
+            .await?;
+
+        let response = require_success(response).await?;
+        let payload = response.json::<SearchResponse>().await?;
+        let mut candidates = Vec::new();
+
+        for item in payload.items {
+            if !should_include_issue(
+                item.pull_request.is_some(),
+                item.locked,
+                item.assignee.is_some(),
+                item.assignees
+                    .as_ref()
+                    .map(|items| !items.is_empty())
+                    .unwrap_or(false),
+                &item.labels,
+            ) {
+                continue;
+            }
+
+            let (owner, repo) = parse_repo_api_url(&item.repository_url)?;
+            let repo_full_name = format!("{owner}/{repo}");
+
+            let issue = GitHubIssue {
+                id: item.id,
+                number: item.number,
+                title: item.title,
+                body: item.body.unwrap_or_default(),
+                labels: extract_label_names(&item.labels),
+                url: item.html_url,
+                repo_full_name,
+                repo_name: repo,
+                repo_description: String::new(),
+                repo_stars: 0,
+                created_at: item.created_at,
+                updated_at: item.updated_at,
+            };
+            candidates.push(DiscoveryCandidate::new(
+                issue,
+                lane_id.to_string(),
+                trust_tier,
+                profile,
+            ));
+        }
+
+        Ok(candidates)
     }
 
     pub async fn fetch_issue(&self, issue_ref: &IssueRef) -> Result<GitHubIssue> {
@@ -284,7 +465,6 @@ impl GitHubClient {
                 name: issue_ref.repo.clone(),
                 description: String::new(),
                 stars: 0,
-                archived: false,
             });
 
         let url = format!(
@@ -381,7 +561,6 @@ impl GitHubClient {
             name: repo.name,
             description: repo.description.unwrap_or_default(),
             stars: repo.stargazers_count.unwrap_or_default(),
-            archived: repo.archived.unwrap_or(false),
         };
         cache.insert(key, metadata.clone());
         Ok(metadata)
@@ -400,7 +579,101 @@ pub fn build_search_query(label: &str) -> String {
     format!("label:\"{label}\" archived:false is:issue is:open no:assignee")
 }
 
-fn load_cached_issues(paths: &IssueFinderPaths) -> Result<Option<Vec<GitHubIssue>>> {
+#[derive(Debug)]
+enum SearchLaneRequest {
+    TrustedRepo {
+        id: String,
+        repository: TrustedRepository,
+        trust_tier: RepoTrustTier,
+        candidate_limit: usize,
+    },
+    Global {
+        id: String,
+        query: String,
+        per_page: usize,
+    },
+}
+
+impl SearchLaneRequest {
+    fn trusted(repository: TrustedRepository, trust_tier: RepoTrustTier) -> Self {
+        let repo_full_name = repository.full_name();
+        let candidate_limit = match trust_tier {
+            RepoTrustTier::OverlayTrusted => TRUSTED_OVERLAY_REPO_CANDIDATE_LIMIT,
+            RepoTrustTier::GfiTrusted => GFI_REPO_CANDIDATE_LIMIT,
+            RepoTrustTier::Global => 0,
+        };
+        Self::TrustedRepo {
+            id: format!("{trust_tier}:{repo_full_name}"),
+            repository,
+            trust_tier,
+            candidate_limit,
+        }
+    }
+
+    fn global(lane: GlobalSearchLane) -> Self {
+        Self::Global {
+            id: lane.id,
+            query: lane.query,
+            per_page: GLOBAL_SEARCH_PER_PAGE,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct GlobalSearchLane {
+    id: String,
+    query: String,
+}
+
+fn global_search_lanes(profile: &ProfileConfig) -> Vec<GlobalSearchLane> {
+    let mut lanes = vec![
+        GlobalSearchLane {
+            id: "global:good-first-issue".to_string(),
+            query: build_search_query("good first issue"),
+        },
+        GlobalSearchLane {
+            id: "global:good-first-issue-hyphen".to_string(),
+            query: build_search_query("good-first-issue"),
+        },
+    ];
+
+    let terms = crate::scoring::profile_terms(profile)
+        .into_iter()
+        .filter(|term| term.len() >= 3)
+        .take(6)
+        .collect::<Vec<_>>();
+    for term in terms {
+        let term = search_term(&term);
+        lanes.push(GlobalSearchLane {
+            id: format!("global:beginner:{term}"),
+            query: format!("label:beginner archived:false is:issue is:open no:assignee {term}"),
+        });
+        lanes.push(GlobalSearchLane {
+            id: format!("global:easy:{term}"),
+            query: format!(
+                "label:easy archived:false is:issue is:open no:assignee {term} expected actual"
+            ),
+        });
+        lanes.push(GlobalSearchLane {
+            id: format!("global:help-wanted:{term}"),
+            query: format!(
+                "label:\"help wanted\" archived:false is:issue is:open no:assignee {term} repro"
+            ),
+        });
+    }
+
+    lanes
+}
+
+fn search_term(term: &str) -> String {
+    if term.contains(' ') {
+        format!("\"{term}\"")
+    } else {
+        term.to_string()
+    }
+}
+
+fn load_cached_candidates(paths: &IssueFinderPaths) -> Result<Option<Vec<DiscoveryCandidate>>> {
     let cache_path = paths.issue_cache_path();
     if !cache_path.exists() {
         return Ok(None);
@@ -408,18 +681,23 @@ fn load_cached_issues(paths: &IssueFinderPaths) -> Result<Option<Vec<GitHubIssue
 
     let raw = fs::read_to_string(&cache_path)
         .with_context(|| format!("unable to read {}", cache_path.display()))?;
-    let payload = serde_json::from_str::<IssueCachePayload>(&raw)?;
+    let Ok(payload) = serde_json::from_str::<DiscoveryCachePayload>(&raw) else {
+        return Ok(None);
+    };
     if Utc::now() - payload.fetched_at > Duration::minutes(SEARCH_CACHE_TTL_MINUTES) {
         return Ok(None);
     }
 
-    Ok(Some(payload.issues))
+    Ok(Some(payload.candidates))
 }
 
-fn save_cached_issues(paths: &IssueFinderPaths, issues: &[GitHubIssue]) -> Result<()> {
-    let payload = IssueCachePayload {
+fn save_cached_candidates(
+    paths: &IssueFinderPaths,
+    candidates: &[DiscoveryCandidate],
+) -> Result<()> {
+    let payload = DiscoveryCachePayload {
         fetched_at: Utc::now(),
-        issues: issues.to_vec(),
+        candidates: candidates.to_vec(),
     };
     atomic_write(
         paths.issue_cache_path().as_path(),

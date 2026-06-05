@@ -1,0 +1,5 @@
+repositories = [
+  'github.com/bytecodealliance/jco',
+  'github.com/microsoft/markitdown',
+  'github.com/httpie/cli',
+]
