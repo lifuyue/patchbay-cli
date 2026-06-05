@@ -28,6 +28,8 @@ pub struct PreparedReportItem {
     #[serde(default)]
     pub feedback_penalty: i32,
     #[serde(default)]
+    pub quality_penalty: i32,
+    #[serde(default)]
     pub reactivation_boost: i32,
     #[serde(default)]
     pub recommendation_visibility: String,
@@ -113,7 +115,7 @@ impl DailyReport {
         } else {
             for item in &self.prepared {
                 lines.push(format!(
-                    "- [{}] {}#{} | feed {} | rank {} | freshness +{} | feedback -{} | reactivation +{} | attention {} | execution {} | fit {} | risk {} | readiness {} ({}) | probe {} | probe warnings: {} | category {} | visibility {} | tags: {} | risk detail: {} | recommendation detail: {} | missing: {} | JSON: {} | Markdown: {} | Codex: {} | Policy: {} | Probe: {} | Events: {}",
+                    "- [{}] {}#{} | feed {} | rank {} | freshness +{} | feedback -{} | quality -{} | reactivation +{} | attention {} | execution {} | fit {} | risk {} | readiness {} ({}) | probe {} | probe warnings: {} | category {} | visibility {} | tags: {} | risk detail: {} | recommendation detail: {} | missing: {} | JSON: {} | Markdown: {} | Codex: {} | Policy: {} | Probe: {} | Events: {}",
                     item.id,
                     item.repo_full_name,
                     item.issue_number,
@@ -121,6 +123,7 @@ impl DailyReport {
                     item.final_rank_score,
                     item.freshness_boost,
                     item.feedback_penalty,
+                    item.quality_penalty,
                     item.reactivation_boost,
                     item.attention_score,
                     item.execution_score,
@@ -280,6 +283,7 @@ mod tests {
                 feed_score: 590,
                 freshness_boost: 10,
                 feedback_penalty: 0,
+                quality_penalty: 0,
                 reactivation_boost: 0,
                 recommendation_visibility: "visible".to_string(),
                 recommendation_reasons: Vec::new(),

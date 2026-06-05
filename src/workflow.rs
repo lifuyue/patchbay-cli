@@ -534,12 +534,13 @@ pub fn render_ranked(ranked: &[RankedValueIssue]) -> String {
                     .join(", ")
             };
             let detail = format!(
-                "{} | rank {} | feed {} | freshness +{} | feedback -{} | reactivation +{} | visibility {} | repo {}:{} | competition {}:{} | profile {}:{} | execution {} ({}) | fit {} | risk {} | evidence: {} | risks: {}",
+                "{} | rank {} | feed {} | freshness +{} | feedback -{} | quality -{} | reactivation +{} | visibility {} | repo {}:{} | competition {}:{} | profile {}:{} | execution {} ({}) | fit {} | risk {} | evidence: {} | risks: {}",
                 issue.value_assessment.recommendation_category,
                 issue.value_assessment.final_rank_score,
                 issue.recommendation.final_feed_score,
                 issue.recommendation.freshness_boost,
                 issue.recommendation.feedback_penalty,
+                issue.recommendation.quality_penalty,
                 issue.recommendation.reactivation_boost,
                 issue.recommendation.visibility,
                 issue.value_assessment.gates.repo_influence.status,
@@ -615,6 +616,7 @@ fn prepared_report_item(
         feed_score: ranked.recommendation.final_feed_score,
         freshness_boost: ranked.recommendation.freshness_boost,
         feedback_penalty: ranked.recommendation.feedback_penalty,
+        quality_penalty: ranked.recommendation.quality_penalty,
         reactivation_boost: ranked.recommendation.reactivation_boost,
         recommendation_visibility: ranked.recommendation.visibility.to_string(),
         recommendation_reasons: ranked.recommendation.reasons.clone(),

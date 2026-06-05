@@ -116,7 +116,18 @@ pub fn detect_comment_competition_markers(body: &str) -> CommentCompetitionMarke
     let normalized = normalize(body);
     CommentCompetitionMarkers {
         attempt: body.contains("/attempt") || normalized.contains(" attempt "),
-        claim: body.contains("/claim") || normalized.contains(" claim "),
+        claim: body.contains("/claim")
+            || normalized.contains(" claim ")
+            || normalized.contains("can i work on this")
+            || normalized.contains("could i work on this")
+            || normalized.contains("i d like to work on this")
+            || normalized.contains("i would like to work on this")
+            || normalized.contains("i would love to work on this")
+            || normalized.contains("pick this up")
+            || normalized.contains("picked this up")
+            || normalized.contains("take this up")
+            || normalized.contains("puedo trabajar en este")
+            || normalized.contains("puedo tomar este"),
         working: normalized.contains("working on this")
             || normalized.contains("i am working on this")
             || normalized.contains("i m working on this"),
@@ -192,5 +203,17 @@ mod tests {
         assert!(markers.claim);
         assert!(markers.fix_submitted);
         assert!(!markers.working);
+    }
+
+    #[test]
+    fn detects_natural_language_claim_markers() {
+        for body in [
+            "hey, would it be ok if I picked this up?",
+            "Can I work on this?",
+            "Puedo trabajar en este Issue?",
+        ] {
+            let markers = detect_comment_competition_markers(body);
+            assert!(markers.claim, "{body}");
+        }
     }
 }

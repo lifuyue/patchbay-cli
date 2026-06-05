@@ -5,6 +5,7 @@ pub mod feed_ranker;
 pub mod feedback;
 pub mod freshness;
 pub mod model;
+pub mod quality_policy;
 pub mod state;
 
 pub use engine::{RecommendationEngine, ScoutOptions, ScoutResult};

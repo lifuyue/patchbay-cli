@@ -9,6 +9,7 @@ pub struct RecommendationAssessment {
     pub base_rank_score: i32,
     pub freshness_boost: i32,
     pub feedback_penalty: i32,
+    pub quality_penalty: i32,
     pub reactivation_boost: i32,
     pub final_feed_score: i32,
     pub visibility: RecommendationVisibility,
@@ -30,6 +31,7 @@ impl RecommendationAssessment {
             base_rank_score,
             freshness_boost: 0,
             feedback_penalty: 0,
+            quality_penalty: 0,
             reactivation_boost: 0,
             final_feed_score,
             visibility,
@@ -44,6 +46,7 @@ impl RecommendationAssessment {
             RecommendationVisibility::HiddenDone | RecommendationVisibility::HiddenDismissed => {
                 false
             }
+            RecommendationVisibility::HiddenQuality => false,
         }
     }
 }
@@ -62,6 +65,7 @@ pub enum RecommendationVisibility {
     HiddenDone,
     HiddenDismissed,
     HiddenFiltered,
+    HiddenQuality,
 }
 
 impl fmt::Display for RecommendationVisibility {
@@ -71,6 +75,7 @@ impl fmt::Display for RecommendationVisibility {
             Self::HiddenDone => "hidden_done",
             Self::HiddenDismissed => "hidden_dismissed",
             Self::HiddenFiltered => "hidden_filtered",
+            Self::HiddenQuality => "hidden_quality",
         })
     }
 }

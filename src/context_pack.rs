@@ -157,10 +157,11 @@ fn render_codex_md(dir: &Path, handoff: &Handoff, skill_path: &Path) -> Result<S
             handoff.value_assessment.risk_penalty
         ),
         format!(
-            "- Feed score: {} | freshness +{} | feedback -{} | reactivation +{} | visibility {}",
+            "- Feed score: {} | freshness +{} | feedback -{} | quality -{} | reactivation +{} | visibility {}",
             handoff.recommendation.final_feed_score,
             handoff.recommendation.freshness_boost,
             handoff.recommendation.feedback_penalty,
+            handoff.recommendation.quality_penalty,
             handoff.recommendation.reactivation_boost,
             handoff.recommendation.visibility
         ),
@@ -300,6 +301,10 @@ fn render_value_md(handoff: &Handoff) -> String {
         format!(
             "- Feedback penalty: -{}",
             handoff.recommendation.feedback_penalty
+        ),
+        format!(
+            "- Quality penalty: -{}",
+            handoff.recommendation.quality_penalty
         ),
         format!(
             "- Reactivation boost: +{}",
@@ -771,6 +776,10 @@ fn push_recommendation_summary(lines: &mut Vec<String>, handoff: &Handoff) {
         format!(
             "- Feed feedback penalty: -{}",
             handoff.recommendation.feedback_penalty
+        ),
+        format!(
+            "- Feed quality penalty: -{}",
+            handoff.recommendation.quality_penalty
         ),
         format!(
             "- Feed reactivation: +{}",

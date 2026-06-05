@@ -116,6 +116,7 @@ pub struct RecommendationAssessment {
     pub base_rank_score: i32,
     pub freshness_boost: i32,
     pub feedback_penalty: i32,
+    pub quality_penalty: i32,
     pub reactivation_boost: i32,
     pub final_feed_score: i32,
     pub visibility: RecommendationVisibility,
@@ -249,6 +250,7 @@ final_feed_score =
   + freshness_boost
   + reactivation_boost
   - feedback_penalty
+  - quality_penalty
 ```
 
 Category anchor：
@@ -274,7 +276,21 @@ filtered_low_depth        0
 5. updated_at desc
 ```
 
-默认不展示 `HiddenDone`、`HiddenDismissed` 和 `HiddenFiltered`。`include_filtered` 只影响 `HiddenFiltered`，不影响 done/dismissed。
+默认不展示 `HiddenDone`、`HiddenDismissed`、`HiddenFiltered` 和 `HiddenQuality`。
+`include_filtered` 只影响 `HiddenFiltered`，不影响 done/dismissed/quality hidden。
+`HiddenQuality` 表示该 issue 虽然可能没有被基础价值模型过滤，但不适合作为 feed 榜单候选。
+
+## Feed Quality Policy
+
+Feed 质量策略独立于基础价值评分，作用是解决真实榜单里的首页质量问题：
+
+- 已有 open/submitted PR、attempt/claim/working 评论，设置 `HiddenQuality`。
+- 明显的低深度 docs/wording/manual/README polish，设置 `HiddenQuality`；基础模型已经判定的 `filtered_low_depth` 仍使用 `HiddenFiltered`。
+- 大型 audit/campaign/phase triage 且属于 `needs_triage` 或带 `high_triage_load` / `weak_validation_path` / `profile_mismatch` 风险，设置 `HiddenQuality`。
+- `profile_mismatch` 将 freshness contribution cap 到 +10 并施加强质量罚分；当它属于 `needs_triage` 或 `contested_or_low_trust` 时设置 `HiddenQuality`，避免错配 issue 在候选不足时回填上榜。
+- `low_impact_repo + weak_validation_path` 不直接隐藏，但 cap freshness 并施加质量罚分。
+
+最终展示选择使用 repo diversity 规则：同一仓库最多展示 2 条。候选不足时允许结果少于请求的 limit，不回填同仓库超额项。
 
 ## Freshness 与 Reactivation
 
@@ -433,6 +449,7 @@ Tool output 中的 candidate 和 assessment 增加 recommendation 字段：
     "baseRankScore": 78,
     "freshnessBoost": 45,
     "feedbackPenalty": 16,
+    "qualityPenalty": 0,
     "reactivationBoost": 0,
     "finalFeedScore": 607,
     "visibility": "visible",
@@ -499,6 +516,9 @@ Issue quality decreased because it was shown before.
 - 维护者近期响应带来更强恢复。
 - 近期 `high_value_needs_scoping` 可超过陈旧 `high_value_ready`。
 - `filtered_low_depth` 和 `contested_or_low_trust` 不能靠 freshness 进入高价值区。
+- open/submitted PR、claimed/working、低深度 docs polish 和大型 audit/campaign 触发 `HiddenQuality`。
+- high-value profile mismatch cap freshness 但不自动隐藏；needs-triage/low-trust profile mismatch 触发 `HiddenQuality`。
+- 最终展示选择限制同仓库主结果数量，且不回填同仓库超额项。
 
 ### CLI / Tool 集成测试
 

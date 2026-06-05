@@ -1,6 +1,7 @@
 use chrono::{Duration, Utc};
 use issue_finder::github::GitHubIssue;
-use issue_finder::github_enrichment::EnrichedIssue;
+use issue_finder::github_enrichment::{EnrichedComment, EnrichedIssue};
+use issue_finder::recommendation::engine::select_display_candidates;
 use issue_finder::recommendation::events::{
     IssueKey, RecommendationEvent, RecommendationEventSource, RecommendationEventType,
 };
@@ -8,7 +9,8 @@ use issue_finder::recommendation::feed_ranker::{apply_recommendation_assessments
 use issue_finder::recommendation::state::{derive_state_map, RecommendationIssueState};
 use issue_finder::recommendation::{RecommendationAssessment, RecommendationVisibility};
 use issue_finder::value_scoring::{
-    RankedValueIssue, RecommendationCategory, ScoreBand, ValueAssessment,
+    GateBand, GateStatus, GateVerdict, RankedValueIssue, RecommendationCategory, RiskTag,
+    ScoreBand, ValueAssessment, ValueGates,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -189,6 +191,154 @@ fn reactivation_recovers_part_of_prior_feedback_penalty() {
     assert!(ranked.recommendation.feedback_penalty < 70);
 }
 
+#[test]
+fn submitted_pr_is_hidden_by_quality_policy() {
+    let mut ranked = ranked_issue(
+        "owner/pr-submitted",
+        RecommendationCategory::NeedsTriage,
+        75,
+        0,
+    );
+    ranked.enriched_issue.competition.open_pr_refs = 1;
+
+    apply_recommendation_assessments(std::slice::from_mut(&mut ranked), &HashMap::new());
+
+    assert_eq!(
+        ranked.recommendation.visibility,
+        RecommendationVisibility::HiddenQuality
+    );
+    assert!(ranked.recommendation.quality_penalty >= 200);
+    assert!(!ranked.recommendation.displayable(true));
+}
+
+#[test]
+fn claimed_issue_is_hidden_by_quality_policy() {
+    let mut ranked = ranked_issue("owner/claimed", RecommendationCategory::NeedsTriage, 75, 0);
+    ranked.enriched_issue.competition.claim_comments = 1;
+    add_comment(
+        &mut ranked,
+        "I would love to work on this. Feel free to fork.",
+    );
+
+    apply_recommendation_assessments(std::slice::from_mut(&mut ranked), &HashMap::new());
+
+    assert_eq!(
+        ranked.recommendation.visibility,
+        RecommendationVisibility::HiddenQuality
+    );
+    assert!(!ranked.recommendation.displayable(false));
+}
+
+#[test]
+fn trivial_docs_polish_is_hidden_by_quality_policy() {
+    let mut ranked = ranked_issue("owner/docs", RecommendationCategory::NeedsTriage, 82, 0);
+    set_issue_text(
+        &mut ranked,
+        "Improve English wording in README and manual",
+        "Please review the English wording, grammar, and natural wording in README.md and the user manual.",
+        &["documentation", "good first issue"],
+    );
+
+    apply_recommendation_assessments(std::slice::from_mut(&mut ranked), &HashMap::new());
+
+    assert_eq!(
+        ranked.recommendation.visibility,
+        RecommendationVisibility::HiddenQuality
+    );
+    assert!(ranked.recommendation.quality_penalty >= 160);
+}
+
+#[test]
+fn broad_audit_issue_is_hidden_by_quality_policy() {
+    let mut ranked = ranked_issue("owner/audit", RecommendationCategory::NeedsTriage, 88, 0);
+    ranked.value_assessment.risk_tags = vec![RiskTag::HighTriageLoad, RiskTag::WeakValidationPath];
+    set_issue_text(
+        &mut ranked,
+        "per-crate README completeness audit (110 gaps)",
+        "Audit 127 publishable crates, triage 110 gaps, then run phase 1 triage and phase 2 remediation. This is not a mechanical fix and requires judgment.",
+        &["documentation"],
+    );
+
+    apply_recommendation_assessments(std::slice::from_mut(&mut ranked), &HashMap::new());
+
+    assert_eq!(
+        ranked.recommendation.visibility,
+        RecommendationVisibility::HiddenQuality
+    );
+    assert!(ranked.recommendation.quality_penalty >= 180);
+}
+
+#[test]
+fn profile_mismatch_caps_freshness_without_hiding_issue() {
+    let mut ranked = ranked_issue(
+        "owner/profile-mismatch",
+        RecommendationCategory::HighValueReady,
+        88,
+        0,
+    );
+    ranked.value_assessment.risk_tags = vec![RiskTag::ProfileMismatch];
+    ranked.value_assessment.gates.profile_fit.status = GateStatus::HardFail;
+
+    apply_recommendation_assessments(std::slice::from_mut(&mut ranked), &HashMap::new());
+
+    assert_eq!(
+        ranked.recommendation.visibility,
+        RecommendationVisibility::Visible
+    );
+    assert_eq!(ranked.recommendation.freshness_boost, 10);
+    assert!(ranked.recommendation.quality_penalty >= 70);
+}
+
+#[test]
+fn profile_mismatch_triage_issue_is_hidden_by_quality_policy() {
+    let mut ranked = ranked_issue(
+        "owner/profile-mismatch-triage",
+        RecommendationCategory::NeedsTriage,
+        88,
+        0,
+    );
+    ranked.value_assessment.risk_tags = vec![RiskTag::ProfileMismatch];
+
+    apply_recommendation_assessments(std::slice::from_mut(&mut ranked), &HashMap::new());
+
+    assert_eq!(
+        ranked.recommendation.visibility,
+        RecommendationVisibility::HiddenQuality
+    );
+}
+
+#[test]
+fn display_selection_limits_primary_results_per_repo_without_backfill() {
+    let ranked = vec![
+        ranked_issue("owner/busy", RecommendationCategory::HighValueReady, 100, 1),
+        ranked_issue("owner/busy", RecommendationCategory::HighValueReady, 99, 1),
+        ranked_issue("owner/busy", RecommendationCategory::HighValueReady, 98, 1),
+        ranked_issue(
+            "owner/alt-one",
+            RecommendationCategory::HighValueReady,
+            80,
+            1,
+        ),
+        ranked_issue(
+            "owner/alt-two",
+            RecommendationCategory::HighValueReady,
+            70,
+            1,
+        ),
+    ];
+
+    let selected = select_display_candidates(ranked, 5, false);
+    let repos = selected
+        .iter()
+        .map(|item| item.issue.repo_full_name.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        repos,
+        vec!["owner/busy", "owner/busy", "owner/alt-one", "owner/alt-two"]
+    );
+}
+
 fn ranked_issue(
     repo_full_name: &str,
     category: RecommendationCategory,
@@ -217,6 +367,7 @@ fn ranked_issue(
         final_rank_score: base_score,
         category,
         recommendation_category: category,
+        gates: passing_gates(),
         attention_score: base_score,
         execution_score: 70,
         profile_fit_score: 70,
@@ -232,6 +383,43 @@ fn ranked_issue(
         enriched_issue,
         explanation: value_assessment.explanation.clone(),
         recommendation: RecommendationAssessment::from_value_assessment(&value_assessment),
+    }
+}
+
+fn set_issue_text(ranked: &mut RankedValueIssue, title: &str, body: &str, labels: &[&str]) {
+    ranked.issue.title = title.to_string();
+    ranked.issue.body = body.to_string();
+    ranked.issue.labels = labels.iter().map(|label| (*label).to_string()).collect();
+    ranked.enriched_issue.issue.title = title.to_string();
+    ranked.enriched_issue.issue.body = body.to_string();
+    ranked.enriched_issue.issue.labels = ranked.issue.labels.clone();
+}
+
+fn add_comment(ranked: &mut RankedValueIssue, body: &str) {
+    ranked.enriched_issue.comments.push(EnrichedComment {
+        source_ref: "issue:comments.0".to_string(),
+        author: Some("contributor".to_string()),
+        author_association: "NONE".to_string(),
+        created_at: Utc::now().to_rfc3339(),
+        body_excerpt: body.to_string(),
+    });
+}
+
+fn passing_gates() -> ValueGates {
+    ValueGates {
+        low_depth: pass_gate(),
+        repo_influence: pass_gate(),
+        competition: pass_gate(),
+        profile_fit: pass_gate(),
+    }
+}
+
+fn pass_gate() -> GateVerdict {
+    GateVerdict {
+        status: GateStatus::Pass,
+        band: GateBand::Strong,
+        reasons: vec!["test gate pass".to_string()],
+        evidence_refs: Vec::new(),
     }
 }
 

@@ -241,9 +241,10 @@ impl Handoff {
                 self.recommendation.final_feed_score
             ),
             format!(
-                "- Feed freshness: +{} | feedback penalty: -{} | reactivation: +{} | visibility: {}",
+                "- Feed freshness: +{} | feedback penalty: -{} | quality penalty: -{} | reactivation: +{} | visibility: {}",
                 self.recommendation.freshness_boost,
                 self.recommendation.feedback_penalty,
+                self.recommendation.quality_penalty,
                 self.recommendation.reactivation_boost,
                 self.recommendation.visibility
             ),

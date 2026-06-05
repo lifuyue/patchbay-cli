@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::HashMap;
 
 use crate::config::Config;
 use crate::github::{GitHubClient, GitHubIssue};
@@ -13,6 +14,7 @@ use super::state::load_state_map;
 
 const ENRICHED_SCOUT_CANDIDATE_LIMIT: usize = 40;
 const COMPETITION_TIMELINE_CANDIDATE_LIMIT: usize = 20;
+const PRIMARY_RESULTS_PER_REPO_LIMIT: usize = 2;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ScoutOptions {
@@ -64,16 +66,9 @@ impl<'a> RecommendationEngine<'a> {
             .await;
         let filtered_count = ranked
             .iter()
-            .filter(|item| {
-                item.recommendation.visibility
-                    == super::model::RecommendationVisibility::HiddenFiltered
-            })
+            .filter(|item| !displayable(item, options.include_filtered))
             .count();
-        let visible = ranked
-            .into_iter()
-            .filter(|item| displayable(item, options.include_filtered))
-            .take(limit)
-            .collect::<Vec<_>>();
+        let visible = select_display_candidates(ranked, limit, options.include_filtered);
 
         if options.record_exposure {
             self.record_exposure(&visible, options.source)?;
@@ -206,4 +201,35 @@ impl<'a> RecommendationEngine<'a> {
         apply_recommendation_assessments(ranked, &states);
         sort_by_feed(ranked);
     }
+}
+
+pub fn select_display_candidates(
+    ranked: Vec<RankedValueIssue>,
+    limit: usize,
+    include_filtered: bool,
+) -> Vec<RankedValueIssue> {
+    if limit == 0 {
+        return Vec::new();
+    }
+
+    let mut selected = Vec::new();
+    let mut repo_counts = HashMap::<String, usize>::new();
+
+    for item in ranked {
+        if !displayable(&item, include_filtered) {
+            continue;
+        }
+
+        let repo = item.issue.repo_full_name.clone();
+        let count = *repo_counts.get(&repo).unwrap_or(&0);
+        if count < PRIMARY_RESULTS_PER_REPO_LIMIT {
+            repo_counts.insert(repo, count + 1);
+            selected.push(item);
+            if selected.len() == limit {
+                return selected;
+            }
+        }
+    }
+
+    selected
 }

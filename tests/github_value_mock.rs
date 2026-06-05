@@ -34,7 +34,7 @@ async fn scout_reorders_candidates_after_value_enrichment() {
         .unwrap();
     handle.join().unwrap();
 
-    assert_eq!(ranked.len(), 3);
+    assert_eq!(ranked.len(), 2);
     assert_eq!(ranked[0].issue.repo_full_name, "owner/growth");
     assert_eq!(
         ranked[0].value_assessment.recommendation_category,
@@ -60,11 +60,9 @@ async fn scout_reorders_candidates_after_value_enrichment() {
         .risk_tags
         .contains(&RiskTag::HighTriageLoad));
 
-    let low_gate = ranked
+    assert!(!ranked
         .iter()
-        .find(|issue| issue.issue.repo_full_name == "owner/impact")
-        .expect("impact candidate should be present");
-    assert!(low_gate.value_assessment.execution_score < 40);
+        .any(|issue| issue.issue.repo_full_name == "owner/impact"));
 }
 
 struct EnvGuard;

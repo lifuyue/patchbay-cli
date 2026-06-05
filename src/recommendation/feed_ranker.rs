@@ -6,6 +6,7 @@ use super::events::IssueKey;
 use super::feedback::assess_feedback;
 use super::freshness::assess_freshness;
 use super::model::{category_anchor, RecommendationAssessment, RecommendationVisibility};
+use super::quality_policy::assess_quality_policy;
 use super::state::RecommendationIssueState;
 
 pub fn apply_recommendation_assessments(
@@ -54,20 +55,31 @@ pub fn recommendation_assessment(
     let value = &item.value_assessment;
     let freshness = assess_freshness(&item.enriched_issue);
     let feedback = assess_feedback(state, &item.enriched_issue);
+    let quality = assess_quality_policy(value, &item.enriched_issue);
     let mut visibility = feedback.visibility;
     if visibility == RecommendationVisibility::Visible
         && value.recommendation_category == RecommendationCategory::FilteredLowDepth
     {
         visibility = RecommendationVisibility::HiddenFiltered;
     }
+    if visibility == RecommendationVisibility::Visible {
+        if let Some(quality_visibility) = quality.visibility {
+            visibility = quality_visibility;
+        }
+    }
 
     let base_category = value.recommendation_category;
     let base_rank_score = value.final_rank_score;
+    let capped_freshness_boost = quality
+        .freshness_cap
+        .map(|cap| freshness.boost.min(cap))
+        .unwrap_or(freshness.boost);
     let final_feed_score = category_anchor(base_category)
         + base_rank_score
-        + freshness.boost
+        + capped_freshness_boost
         + feedback.reactivation_boost
-        - feedback.penalty;
+        - feedback.penalty
+        - quality.penalty;
     let mut reasons = Vec::new();
     reasons.push(format!(
         "Base category {base_category} anchors feed score at {}",
@@ -77,7 +89,13 @@ pub fn recommendation_assessment(
         "Intrinsic value rank contributes +{base_rank_score}"
     ));
     reasons.extend(freshness.reasons);
+    if capped_freshness_boost < freshness.boost {
+        reasons.push(format!(
+            "Quality policy caps freshness contribution at +{capped_freshness_boost}"
+        ));
+    }
     reasons.extend(feedback.reasons);
+    reasons.extend(quality.reasons);
     if visibility != RecommendationVisibility::Visible {
         reasons.push(format!("Feed visibility is {visibility}"));
     }
@@ -85,8 +103,9 @@ pub fn recommendation_assessment(
     RecommendationAssessment {
         base_category,
         base_rank_score,
-        freshness_boost: freshness.boost,
+        freshness_boost: capped_freshness_boost,
         feedback_penalty: feedback.penalty,
+        quality_penalty: quality.penalty,
         reactivation_boost: feedback.reactivation_boost,
         final_feed_score,
         visibility,
@@ -108,7 +127,8 @@ fn visibility_rank(visibility: RecommendationVisibility) -> u8 {
     match visibility {
         RecommendationVisibility::Visible => 0,
         RecommendationVisibility::HiddenFiltered => 1,
-        RecommendationVisibility::HiddenDone => 2,
-        RecommendationVisibility::HiddenDismissed => 3,
+        RecommendationVisibility::HiddenQuality => 2,
+        RecommendationVisibility::HiddenDone => 3,
+        RecommendationVisibility::HiddenDismissed => 4,
     }
 }

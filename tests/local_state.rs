@@ -159,6 +159,7 @@ fn writes_handoff_inbox_and_report_under_issue_finder_home() {
             feed_score: 588,
             freshness_boost: 0,
             feedback_penalty: 0,
+            quality_penalty: 0,
             reactivation_boost: 0,
             recommendation_visibility: "visible".to_string(),
             recommendation_reasons: Vec::new(),
