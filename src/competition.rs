@@ -123,9 +123,14 @@ pub fn detect_comment_competition_markers(body: &str) -> CommentCompetitionMarke
             || normalized.contains("i d like to work on this")
             || normalized.contains("i would like to work on this")
             || normalized.contains("i would love to work on this")
+            || normalized.contains("i d like to take a look")
+            || normalized.contains("i would like to take a look")
+            || normalized.contains("i d like to fix this")
+            || normalized.contains("i would like to fix this")
             || normalized.contains("pick this up")
             || normalized.contains("picked this up")
             || normalized.contains("take this up")
+            || normalized.contains("please assign me")
             || normalized.contains("puedo trabajar en este")
             || normalized.contains("puedo tomar este"),
         working: normalized.contains("working on this")
@@ -134,7 +139,12 @@ pub fn detect_comment_competition_markers(body: &str) -> CommentCompetitionMarke
         fix_submitted: normalized.contains("fix submitted in pr")
             || normalized.contains("submitted in pr")
             || normalized.contains("opened a pr")
-            || normalized.contains("pull request submitted"),
+            || normalized.contains("pull request submitted")
+            || normalized.contains("fixed by pr")
+            || normalized.contains("fixed by #")
+            || normalized.contains("confirmed fixed")
+            || normalized.contains("no longer reproduce")
+            || normalized.contains("should we close this issue since fixed"),
     }
 }
 
@@ -210,10 +220,25 @@ mod tests {
         for body in [
             "hey, would it be ok if I picked this up?",
             "Can I work on this?",
+            "Hi! I'd like to take a look.",
+            "I'd like to fix this. Please assign me.",
             "Puedo trabajar en este Issue?",
         ] {
             let markers = detect_comment_competition_markers(body);
             assert!(markers.claim, "{body}");
+        }
+    }
+
+    #[test]
+    fn detects_fixed_or_no_longer_reproducible_markers() {
+        for body in [
+            "This issue has been fixed by PR #3457.",
+            "Confirmed fixed by #3457.",
+            "I can no longer reproduce this on current main.",
+            "Should we close this issue since fixed?",
+        ] {
+            let markers = detect_comment_competition_markers(body);
+            assert!(markers.fix_submitted, "{body}");
         }
     }
 }

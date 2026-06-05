@@ -87,7 +87,12 @@ fn apply_competition_constraints(
         || text.contains("fix submitted in pr")
         || text.contains("submitted in pr")
         || text.contains("opened a pr")
-        || text.contains("pull request submitted");
+        || text.contains("pull request submitted")
+        || text.contains("fixed by pr")
+        || text.contains("fixed by #")
+        || text.contains("confirmed fixed")
+        || text.contains("no longer reproduce")
+        || text.contains("should we close this issue since fixed");
     let claimed = enriched.competition.attempt_comments > 0
         || enriched.competition.claim_comments > 0
         || enriched.competition.working_comments > 0
@@ -95,6 +100,10 @@ fn apply_competition_constraints(
         || text.contains("i would love to work on this")
         || text.contains("i d like to work on this")
         || text.contains("i would like to work on this")
+        || text.contains("i d like to take a look")
+        || text.contains("i would like to take a look")
+        || text.contains("i d like to fix this")
+        || text.contains("i would like to fix this")
         || text.contains("can i work on this")
         || text.contains("could i work on this")
         || text.contains("i m working on this")
@@ -102,6 +111,7 @@ fn apply_competition_constraints(
         || text.contains("pick this up")
         || text.contains("picked this up")
         || text.contains("take this up")
+        || text.contains("please assign me")
         || text.contains("puedo trabajar en este")
         || text.contains("puedo tomar este")
         || text.contains("feel free to fork")
@@ -239,6 +249,9 @@ fn is_trivial_docs_task(text: &str) -> bool {
             "estimated effort trivial",
             "pure docs formatting",
             "documentation formatting error",
+            "documentation only no behavior change",
+            "doc comments still describe",
+            "stale wording in",
         ],
     )
 }

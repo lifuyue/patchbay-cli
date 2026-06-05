@@ -1,4 +1,5 @@
 use anyhow::Result;
+use futures::stream::{self, StreamExt};
 use std::collections::HashMap;
 
 use crate::config::Config;
@@ -14,6 +15,7 @@ use super::state::load_state_map;
 
 const ENRICHED_SCOUT_CANDIDATE_LIMIT: usize = 40;
 const COMPETITION_TIMELINE_CANDIDATE_LIMIT: usize = 20;
+const ENRICHMENT_CONCURRENCY_LIMIT: usize = 4;
 const PRIMARY_RESULTS_PER_REPO_LIMIT: usize = 2;
 
 #[derive(Debug, Clone, Copy)]
@@ -154,20 +156,22 @@ impl<'a> RecommendationEngine<'a> {
         let mut rough = rank_candidates(issues, &self.config.profile);
         rough.truncate(limit.clamp(25, ENRICHED_SCOUT_CANDIDATE_LIMIT));
 
-        let mut ranked = Vec::new();
-        for (index, rough_issue) in rough.into_iter().enumerate() {
-            if let Ok(item) = self
-                .rank_single_issue(
+        let mut ranked = stream::iter(rough.into_iter().enumerate().map(
+            |(index, rough_issue)| async move {
+                self.rank_single_issue(
                     enrichment,
                     rough_issue.issue,
                     refresh,
                     index < COMPETITION_TIMELINE_CANDIDATE_LIMIT,
                 )
                 .await
-            {
-                ranked.push(item);
-            }
-        }
+                .ok()
+            },
+        ))
+        .buffer_unordered(ENRICHMENT_CONCURRENCY_LIMIT)
+        .filter_map(|item| async move { item })
+        .collect::<Vec<_>>()
+        .await;
         self.apply_feed_ranking(&mut ranked);
         ranked
     }

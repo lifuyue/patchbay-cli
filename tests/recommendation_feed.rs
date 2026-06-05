@@ -217,7 +217,7 @@ fn claimed_issue_is_hidden_by_quality_policy() {
     ranked.enriched_issue.competition.claim_comments = 1;
     add_comment(
         &mut ranked,
-        "I would love to work on this. Feel free to fork.",
+        "I would like to take a look. Please assign me.",
     );
 
     apply_recommendation_assessments(std::slice::from_mut(&mut ranked), &HashMap::new());
@@ -227,6 +227,22 @@ fn claimed_issue_is_hidden_by_quality_policy() {
         RecommendationVisibility::HiddenQuality
     );
     assert!(!ranked.recommendation.displayable(false));
+}
+
+#[test]
+fn fixed_or_no_longer_reproduced_issue_is_hidden_by_quality_policy() {
+    let mut ranked = ranked_issue("owner/fixed", RecommendationCategory::NeedsTriage, 75, 0);
+    add_comment(
+        &mut ranked,
+        "Confirmed fixed by #3457. I can no longer reproduce this on current main.",
+    );
+
+    apply_recommendation_assessments(std::slice::from_mut(&mut ranked), &HashMap::new());
+
+    assert_eq!(
+        ranked.recommendation.visibility,
+        RecommendationVisibility::HiddenQuality
+    );
 }
 
 #[test]
@@ -246,6 +262,29 @@ fn trivial_docs_polish_is_hidden_by_quality_policy() {
         RecommendationVisibility::HiddenQuality
     );
     assert!(ranked.recommendation.quality_penalty >= 160);
+}
+
+#[test]
+fn stale_doc_comment_only_issue_is_hidden_by_quality_policy() {
+    let mut ranked = ranked_issue(
+        "owner/doc-comments",
+        RecommendationCategory::NeedsTriage,
+        82,
+        0,
+    );
+    set_issue_text(
+        &mut ranked,
+        "Stale native eval callback wording in EvalEngine doc comments",
+        "Two doc comments still describe the removed native callback model. Documentation only, no behavior change.",
+        &["docs", "good first issue"],
+    );
+
+    apply_recommendation_assessments(std::slice::from_mut(&mut ranked), &HashMap::new());
+
+    assert_eq!(
+        ranked.recommendation.visibility,
+        RecommendationVisibility::HiddenQuality
+    );
 }
 
 #[test]
