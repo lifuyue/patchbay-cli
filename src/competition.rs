@@ -120,6 +120,10 @@ pub fn detect_comment_competition_markers(body: &str) -> CommentCompetitionMarke
             || normalized.contains(" claim ")
             || normalized.contains("can i work on this")
             || normalized.contains("could i work on this")
+            || normalized.contains("interested in contributing")
+            || normalized.contains("interested in working on this")
+            || normalized.contains("external contributions be welcome")
+            || normalized.contains("happy to implement")
             || normalized.contains("i d like to work on this")
             || normalized.contains("i would like to work on this")
             || normalized.contains("i would love to work on this")
@@ -135,7 +139,10 @@ pub fn detect_comment_competition_markers(body: &str) -> CommentCompetitionMarke
             || normalized.contains("puedo tomar este"),
         working: normalized.contains("working on this")
             || normalized.contains("i am working on this")
-            || normalized.contains("i m working on this"),
+            || normalized.contains("i m working on this")
+            || normalized.contains("i will look into it")
+            || normalized.contains("i ll look into it")
+            || normalized.contains("i was able to replicate"),
         fix_submitted: normalized.contains("fix submitted in pr")
             || normalized.contains("submitted in pr")
             || normalized.contains("opened a pr")
@@ -222,10 +229,24 @@ mod tests {
             "Can I work on this?",
             "Hi! I'd like to take a look.",
             "I'd like to fix this. Please assign me.",
+            "Hi! I'm interested in contributing to this issue.",
+            "If contributions are welcome, I'd be happy to implement this.",
             "Puedo trabajar en este Issue?",
         ] {
             let markers = detect_comment_competition_markers(body);
             assert!(markers.claim, "{body}");
+        }
+    }
+
+    #[test]
+    fn detects_natural_language_working_markers() {
+        for body in [
+            "I will look into it",
+            "I'll look into it.",
+            "I was able to replicate the issue locally.",
+        ] {
+            let markers = detect_comment_competition_markers(body);
+            assert!(markers.working, "{body}");
         }
     }
 

@@ -2,7 +2,7 @@
 
 日期：2026-06-05
 
-状态：待实现
+状态：已实现
 
 ## 摘要
 
@@ -235,13 +235,12 @@ global search:   up to 30%
 合理 discovery API 预算：
 
 ```text
-overlay repo search: 10-15 requests
-GFI repo search:     50-70 requests
-global search:       10-20 requests
-total discovery:     about 80-100 requests max
+overlay repo issue listing: 3 repos, stop after 8 candidates per repo
+GFI repo issue listing:     30 repos, stop after 4 candidates per repo
+global search:              up to 20 search requests
 ```
 
-GFI repo query 应尽量用一条 repo-scoped multi-label search 覆盖多 label，而不是 `repo x label` 产生 8 倍请求量。
+Trusted repo lanes use the repository issues endpoint instead of GitHub search so they do not consume the stricter search API quota. Each repo scans beginner labels in priority order and stops as soon as the repo candidate cap is reached. Global exploration remains on GitHub search and is capped separately.
 
 ## Dedupe 规则
 

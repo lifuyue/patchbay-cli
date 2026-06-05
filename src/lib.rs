@@ -3,6 +3,7 @@ pub mod cli;
 pub mod competition;
 pub mod config;
 pub mod context_pack;
+pub mod discovery;
 pub mod doctor;
 pub mod errors;
 pub mod evidence_pack;

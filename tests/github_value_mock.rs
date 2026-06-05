@@ -83,11 +83,16 @@ fn start_mock_value_github() -> (String, thread::JoinHandle<()>) {
 
     let handle = thread::spawn(move || {
         let started = Instant::now();
+        let mut last_request_at = Instant::now();
         let mut served = 0usize;
 
-        while served < 30 && started.elapsed() < StdDuration::from_secs(5) {
+        while started.elapsed() < StdDuration::from_secs(10) {
+            if served > 0 && last_request_at.elapsed() > StdDuration::from_secs(1) {
+                break;
+            }
             match listener.accept() {
                 Ok((mut stream, _)) => {
+                    last_request_at = Instant::now();
                     let mut buffer = [0u8; 4096];
                     let bytes_read = stream.read(&mut buffer).unwrap_or(0);
                     let request = String::from_utf8_lossy(&buffer[..bytes_read]);

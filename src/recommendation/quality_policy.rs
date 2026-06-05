@@ -50,6 +50,9 @@ fn apply_profile_constraints(value: &ValueAssessment, assessment: &mut QualityPo
     } else if value.profile_fit_score < 50 {
         cap_freshness(assessment, 24);
         assessment.penalty += 25;
+        if value.recommendation_category == RecommendationCategory::NeedsTriage {
+            assessment.visibility = Some(RecommendationVisibility::HiddenQuality);
+        }
         assessment
             .reasons
             .push("Quality policy: weak profile fit limits freshness impact".to_string());
@@ -98,6 +101,10 @@ fn apply_competition_constraints(
         || enriched.competition.working_comments > 0
         || text.contains("i d love to work on this")
         || text.contains("i would love to work on this")
+        || text.contains("interested in contributing")
+        || text.contains("interested in working on this")
+        || text.contains("external contributions be welcome")
+        || text.contains("happy to implement")
         || text.contains("i d like to work on this")
         || text.contains("i would like to work on this")
         || text.contains("i d like to take a look")
@@ -108,6 +115,9 @@ fn apply_competition_constraints(
         || text.contains("could i work on this")
         || text.contains("i m working on this")
         || text.contains("i am working on this")
+        || text.contains("i will look into it")
+        || text.contains("i ll look into it")
+        || text.contains("i was able to replicate")
         || text.contains("pick this up")
         || text.contains("picked this up")
         || text.contains("take this up")
@@ -244,6 +254,8 @@ fn is_trivial_docs_task(text: &str) -> bool {
     )) || contains_any(
         text,
         &[
+            "add documentation",
+            "add docs",
             "trivial 5 minutes",
             "trivial 10 minutes",
             "estimated effort trivial",

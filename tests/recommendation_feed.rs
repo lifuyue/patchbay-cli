@@ -219,6 +219,14 @@ fn claimed_issue_is_hidden_by_quality_policy() {
         &mut ranked,
         "I would like to take a look. Please assign me.",
     );
+    add_comment(
+        &mut ranked,
+        "Hi, I'm interested in contributing to this issue and happy to implement it.",
+    );
+    add_comment(
+        &mut ranked,
+        "I will look into it and was able to replicate.",
+    );
 
     apply_recommendation_assessments(std::slice::from_mut(&mut ranked), &HashMap::new());
 

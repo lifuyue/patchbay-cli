@@ -3,17 +3,18 @@ use futures::stream::{self, StreamExt};
 use std::collections::HashMap;
 
 use crate::config::Config;
+use crate::discovery::{select_enrichment_candidates, DiscoveryCandidate};
 use crate::github::{GitHubClient, GitHubIssue};
 use crate::github_enrichment::GitHubEnrichmentClient;
 use crate::paths::IssueFinderPaths;
 use crate::value_scoring::{assess_issue, RankedValueIssue};
 
-use super::candidate_ranker::rank_candidates;
 use super::events::{record_event_for_issue, RecommendationEventSource, RecommendationEventType};
 use super::feed_ranker::{apply_recommendation_assessments, displayable, sort_by_feed};
 use super::state::load_state_map;
 
-const ENRICHED_SCOUT_CANDIDATE_LIMIT: usize = 40;
+const ENRICHED_SCOUT_CANDIDATE_LIMIT: usize = 100;
+const ENRICHMENT_BATCH_SIZE: usize = 25;
 const COMPETITION_TIMELINE_CANDIDATE_LIMIT: usize = 20;
 const ENRICHMENT_CONCURRENCY_LIMIT: usize = 4;
 const PRIMARY_RESULTS_PER_REPO_LIMIT: usize = 2;
@@ -61,10 +62,12 @@ impl<'a> RecommendationEngine<'a> {
         self.paths.ensure_layout()?;
         let github = GitHubClient::new(self.config)?;
         let enrichment = GitHubEnrichmentClient::new(self.config)?;
-        let issues = github.discover_issues(self.paths, refresh).await?;
-        let discovery_count = issues.len();
+        let candidates = github
+            .discover_candidates(self.paths, refresh, &self.config.profile)
+            .await?;
+        let discovery_count = candidates.len();
         let ranked = self
-            .rank_discovered_issues(&enrichment, issues, limit, refresh)
+            .rank_discovered_candidates(&enrichment, candidates, limit, refresh)
             .await;
         let filtered_count = ranked
             .iter()
@@ -146,33 +149,53 @@ impl<'a> RecommendationEngine<'a> {
         Ok(())
     }
 
-    async fn rank_discovered_issues(
+    async fn rank_discovered_candidates(
         &self,
         enrichment: &GitHubEnrichmentClient,
-        issues: Vec<GitHubIssue>,
+        candidates: Vec<DiscoveryCandidate>,
         limit: usize,
         refresh: bool,
     ) -> Vec<RankedValueIssue> {
-        let mut rough = rank_candidates(issues, &self.config.profile);
-        rough.truncate(limit.clamp(25, ENRICHED_SCOUT_CANDIDATE_LIMIT));
+        let selected = select_enrichment_candidates(candidates, ENRICHED_SCOUT_CANDIDATE_LIMIT);
+        let discovery_by_key = selected
+            .iter()
+            .map(|candidate| (candidate_key(&candidate.issue), candidate.clone()))
+            .collect::<HashMap<_, _>>();
+        let mut ranked = Vec::new();
 
-        let mut ranked = stream::iter(rough.into_iter().enumerate().map(
-            |(index, rough_issue)| async move {
-                self.rank_single_issue(
-                    enrichment,
-                    rough_issue.issue,
-                    refresh,
-                    index < COMPETITION_TIMELINE_CANDIDATE_LIMIT,
-                )
-                .await
-                .ok()
-            },
-        ))
-        .buffer_unordered(ENRICHMENT_CONCURRENCY_LIMIT)
-        .filter_map(|item| async move { item })
-        .collect::<Vec<_>>()
-        .await;
-        self.apply_feed_ranking(&mut ranked);
+        for (batch_index, batch) in selected.chunks(ENRICHMENT_BATCH_SIZE).enumerate() {
+            let ranked_batch = stream::iter(batch.iter().cloned().enumerate().map(
+                |(index, candidate)| async move {
+                    let absolute_index = batch_index * ENRICHMENT_BATCH_SIZE + index;
+                    self.rank_single_issue(
+                        enrichment,
+                        candidate.issue,
+                        refresh,
+                        absolute_index < COMPETITION_TIMELINE_CANDIDATE_LIMIT,
+                    )
+                    .await
+                    .ok()
+                },
+            ))
+            .buffer_unordered(ENRICHMENT_CONCURRENCY_LIMIT)
+            .filter_map(|item| async move { item })
+            .collect::<Vec<_>>()
+            .await;
+
+            ranked.extend(ranked_batch);
+            self.apply_feed_ranking(&mut ranked);
+            append_discovery_reasons(&mut ranked, &discovery_by_key);
+
+            if ranked
+                .iter()
+                .filter(|item| displayable(item, false))
+                .count()
+                >= limit
+            {
+                break;
+            }
+        }
+
         ranked
     }
 
@@ -205,6 +228,27 @@ impl<'a> RecommendationEngine<'a> {
         apply_recommendation_assessments(ranked, &states);
         sort_by_feed(ranked);
     }
+}
+
+fn append_discovery_reasons(
+    ranked: &mut [RankedValueIssue],
+    discovery_by_key: &HashMap<String, DiscoveryCandidate>,
+) {
+    for item in ranked {
+        let key = candidate_key(&item.issue);
+        let Some(candidate) = discovery_by_key.get(&key) else {
+            continue;
+        };
+        for reason in candidate.discovery_reasons() {
+            if !item.explanation.contains(&reason) {
+                item.explanation.push(reason);
+            }
+        }
+    }
+}
+
+fn candidate_key(issue: &GitHubIssue) -> String {
+    format!("{}#{}", issue.repo_full_name, issue.number)
 }
 
 pub fn select_display_candidates(
