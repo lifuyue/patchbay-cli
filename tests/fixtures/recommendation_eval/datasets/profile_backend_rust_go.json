@@ -147,6 +147,41 @@
       }
     },
     {
+      "id": "backend_codegraph_llm_service_profile_mismatch",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "CodeGraphContext/CodeGraphContext",
+        "number": 571,
+        "title": "VSCode Extension: Ability to integrate with different LLM service providers",
+        "body": "A UI to add API keys and enable or disable various AI based features.",
+        "labels": ["enhancement", "help wanted", "good first issue"],
+        "createdAgeDays": 6,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "Code graph context tool",
+        "language": "Python",
+        "stars": 3620,
+        "forks": 652,
+        "watchers": 19,
+        "openIssues": 80,
+        "topics": ["python"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Could you kindly assign me this issue?",
+          "createdAgeDays": 1
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch", "claimed_or_pr"],
+        "reasons": ["Generic Python/VSCode LLM service UI issue is not Rust/Go backend systems work and appears claimed."]
+      }
+    },
+    {
       "id": "backend_bastion_low_depth",
       "sourceTier": "gfi_trusted",
       "issue": {
@@ -174,7 +209,35 @@
         "rejectReasons": ["stale"],
         "reasons": ["Profile relevant but old and underspecified."]
       }
+    },
+    {
+      "id": "backend_bastion_observer_old_dashboard_hidden",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "bastion-rs/bastion",
+        "number": 2,
+        "title": "Observer implementation for seeing the runtime status",
+        "body": "There should be a UI interface to see what is going on inside the system. That will be a dashboard. Considerations: this can be feature gateable or another crate under a workspace.",
+        "labels": ["good first issue", "C-feature-request"],
+        "createdAgeDays": 2500,
+        "updatedAgeDays": 250
+      },
+      "repository": {
+        "description": "Highly-available Distributed Fault-tolerant Runtime",
+        "language": "Rust",
+        "stars": 2906,
+        "forks": 104,
+        "watchers": 56,
+        "openIssues": 70,
+        "topics": ["actor", "concurrency", "distributed-systems", "rust", "runtime"],
+        "pushedAgeDays": 200
+      },
+      "expected": {
+        "quality": "weak",
+        "behavior": "hidden",
+        "rejectReasons": ["stale"],
+        "reasons": ["Very old broad dashboard feature request should not become the Rust/Go front page when recall is sparse."]
+      }
     }
   ]
 }
-

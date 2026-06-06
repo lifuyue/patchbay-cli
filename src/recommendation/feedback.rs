@@ -102,15 +102,15 @@ pub fn assess_feedback(
 }
 
 fn shown_penalty(state: &RecommendationIssueState) -> f64 {
-    8.0 * decay(state.last_shown_at.as_deref()) * state.shown_count.min(5) as f64
+    55.0 * decay(state.last_shown_at.as_deref()) * state.shown_count.min(5) as f64
 }
 
 fn read_penalty(state: &RecommendationIssueState) -> f64 {
-    35.0 * decay(state.last_read_at.as_deref()) * state.read_count.min(3) as f64
+    170.0 * decay(state.last_read_at.as_deref()) * state.read_count.min(3) as f64
 }
 
 fn prepared_penalty(state: &RecommendationIssueState) -> f64 {
-    80.0 * decay(state.last_prepared_at.as_deref()) * state.prepared_count.min(2) as f64
+    260.0 * decay(state.last_prepared_at.as_deref()) * state.prepared_count.min(2) as f64
 }
 
 fn decay(timestamp: Option<&str>) -> f64 {

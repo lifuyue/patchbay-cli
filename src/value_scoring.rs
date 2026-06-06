@@ -156,7 +156,7 @@ pub fn recommendation_category(
     if gates.repo_influence.status == GateStatus::Pass
         && gates.competition.status == GateStatus::Pass
         && gates.profile_fit.status == GateStatus::Pass
-        && scores.profile_fit_score >= 60
+        && scores.profile_fit_score >= 70
         && scores.execution_quality_score >= 70
         && !scope_risk
     {
@@ -165,7 +165,7 @@ pub fn recommendation_category(
 
     if gates.repo_influence.status == GateStatus::Pass
         && gates.competition.band != GateBand::Saturated
-        && scores.profile_fit_score >= 50
+        && scores.profile_fit_score >= 70
         && scores.execution_quality_score >= 50
         && (!competition_contested || scores.execution_quality_score >= 70)
     {
@@ -531,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn compatibility_rank_score_uses_new_rank_axes() {
-        assert_eq!(final_rank_score(100, 100, 100, 100), 65);
+    fn compatibility_rank_score_uses_profile_first_rank_axes() {
+        assert_eq!(final_rank_score(100, 100, 100, 100), 55);
     }
 }

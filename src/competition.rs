@@ -127,16 +127,40 @@ pub fn detect_comment_competition_markers(body: &str) -> CommentCompetitionMarke
             || normalized.contains("i d like to work on this")
             || normalized.contains("i would like to work on this")
             || normalized.contains("i would love to work on this")
+            || normalized.contains("would like to work on this")
+            || normalized.contains("would love to work on this")
             || normalized.contains("i d like to take a look")
             || normalized.contains("i would like to take a look")
             || normalized.contains("i d like to fix this")
             || normalized.contains("i would like to fix this")
+            || normalized.contains("i d like to take this issue")
+            || normalized.contains("i would like to take this issue")
+            || normalized.contains("i would like to be assigned")
+            || normalized.contains("would like to be assigned")
+            || normalized.contains("could i be assigned")
+            || normalized.contains("can i get this issue")
+            || normalized.contains("i want to work on this")
+            || normalized.contains("i want to take this")
+            || normalized.contains("i want to pick this")
+            || normalized.contains("want to pick this")
+            || normalized.contains("can i work on it")
+            || normalized.contains("could i work on it")
+            || normalized.contains("take it up")
+            || normalized.contains("take this issue up")
+            || normalized.contains("i can take care")
+            || normalized.contains("i ll take care")
+            || normalized.contains("give this one a try")
+            || normalized.contains("give it a try")
+            || normalized.contains("i would love to fix")
             || normalized.contains("pick this up")
             || normalized.contains("picked this up")
             || normalized.contains("take this up")
+            || normalized.contains("can you assign me")
+            || normalized.contains("assign me this issue")
             || normalized.contains("please assign me")
             || normalized.contains("puedo trabajar en este")
-            || normalized.contains("puedo tomar este"),
+            || normalized.contains("puedo tomar este")
+            || normalized.contains("yo quiero contribuir"),
         working: normalized.contains("working on this")
             || normalized.contains("i am working on this")
             || normalized.contains("i m working on this")
@@ -146,7 +170,23 @@ pub fn detect_comment_competition_markers(body: &str) -> CommentCompetitionMarke
         fix_submitted: normalized.contains("fix submitted in pr")
             || normalized.contains("submitted in pr")
             || normalized.contains("opened a pr")
+            || normalized.contains("created pr")
+            || normalized.contains("created a pr")
+            || normalized.contains("created pull request")
+            || normalized.contains("i have created pr")
+            || normalized.contains("i have created a pr")
             || normalized.contains("pull request submitted")
+            || normalized.contains("awaiting a pr")
+            || normalized.contains("awaiting pr")
+            || normalized.contains("pr i ve got")
+            || normalized.contains("pr i've got")
+            || normalized.contains("take a look at the pr")
+            || normalized.contains("should i make a pr")
+            || normalized.contains("here is my contrib")
+            || normalized.contains("left the reviews on the commit")
+            || normalized.contains("redone my changes")
+            || normalized.contains("will be fixing this in my pull request")
+            || normalized.contains("fixing this in my pull request")
             || normalized.contains("fixed by pr")
             || normalized.contains("fixed by #")
             || normalized.contains("confirmed fixed")
@@ -229,9 +269,20 @@ mod tests {
             "Can I work on this?",
             "Hi! I'd like to take a look.",
             "I'd like to fix this. Please assign me.",
+            "Can you assign me this issue?",
+            "I would like to take this issue.",
+            "I would like to be assigned.",
+            "I can take care of the bug.",
+            "I want to pick this, is it available?",
+            "If this problem is still open, can I work on it?",
+            "I would like to work on this issue.",
+            "If yes, I would like to take it up.",
+            "I would give this one a try.",
+            "I would love to fix the typing cursor issue.",
             "Hi! I'm interested in contributing to this issue.",
             "If contributions are welcome, I'd be happy to implement this.",
             "Puedo trabajar en este Issue?",
+            "Yo quiero contribuir con este issue",
         ] {
             let markers = detect_comment_competition_markers(body);
             assert!(markers.claim, "{body}");
@@ -254,6 +305,11 @@ mod tests {
     fn detects_fixed_or_no_longer_reproducible_markers() {
         for body in [
             "This issue has been fixed by PR #3457.",
+            "I have created a PR for this task.",
+            "Will be fixing this in my pull request.",
+            "I am awaiting a PR from the contributor.",
+            "Would you mind taking a look at the PR I've got?",
+            "Here is my contrib for nested fields.",
             "Confirmed fixed by #3457.",
             "I can no longer reproduce this on current main.",
             "Should we close this issue since fixed?",

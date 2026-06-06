@@ -267,15 +267,17 @@ fn search_item(
 }
 
 fn repo_body(repo: &str) -> String {
-    let stars = if repo == "slow-top" { 5_000 } else { 200 };
+    let stars = if repo == "slow-top" { 50_000 } else { 200 };
+    let forks = if repo == "slow-top" { 2_500 } else { 25 };
+    let watchers = if repo == "slow-top" { 250 } else { 5 };
     format!(
         r#"{{
   "full_name": "owner/{repo}",
   "name": "{repo}",
   "description": "Rust CLI developer tools",
   "stargazers_count": {stars},
-  "forks_count": 25,
-  "subscribers_count": 5,
+  "forks_count": {forks},
+  "subscribers_count": {watchers},
   "open_issues_count": 20,
   "pushed_at": "{}",
   "created_at": "2025-01-01T00:00:00Z",

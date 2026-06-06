@@ -106,10 +106,12 @@ pub fn profile_fit_assessment(
     let mut score = 0;
     let mut reasons = Vec::new();
     let mut evidence_refs = Vec::new();
+    let mut strong_issue_evidence = false;
 
     let issue_matches = matching_terms(&issue_text, &profile_terms);
     if !issue_matches.is_empty() {
         score += (issue_matches.len() as i32 * 22).min(50);
+        strong_issue_evidence = true;
         reasons.push(format!(
             "Issue task matches profile term(s): {}",
             issue_matches.join(", ")
@@ -120,7 +122,7 @@ pub fn profile_fit_assessment(
 
     let repo_matches = matching_terms(&repo_text, &profile_terms);
     if !repo_matches.is_empty() {
-        score += (repo_matches.len() as i32 * 12).min(30);
+        score += (repo_matches.len() as i32 * 12).min(38);
         reasons.push(format!(
             "Repository context matches profile term(s): {}",
             repo_matches.join(", ")
@@ -129,12 +131,49 @@ pub fn profile_fit_assessment(
         evidence_refs.push("repo:topics".to_string());
     }
 
-    if wants_cli_or_devtools(profile) && looks_like_cli_or_devtool(&issue_text, &repo_text) {
+    if language_matches_profile(enriched, &profile_terms) {
+        score += 14;
+        reasons.push("Repository language matches the configured profile".to_string());
+        evidence_refs.push("repo:language".to_string());
+    }
+
+    let domain_matches = matching_terms(&issue_text, &profile_domain_terms(profile));
+    if !domain_matches.is_empty() {
+        strong_issue_evidence = true;
+        score += (domain_matches.len() as i32 * 12).min(28);
+        reasons.push(format!(
+            "Issue domain signal matches profile: {}",
+            domain_matches.join(", ")
+        ));
+        evidence_refs.push("issue:title".to_string());
+        evidence_refs.push("issue:body".to_string());
+    }
+
+    if strong_issue_evidence && repo_matches.len() >= 2 {
+        score += 16;
+        reasons.push("Issue-level evidence is reinforced by repository context".to_string());
+        evidence_refs.push("repo:topics".to_string());
+    }
+
+    if wants_cli_or_devtools(profile)
+        && looks_like_cli_or_devtool(&issue_text, &repo_text)
+        && cli_devtool_boost_allowed(enriched, profile, &issue_text, &repo_text)
+    {
         score += 45;
         reasons.push("CLI/developer-tool domain fits the configured profile".to_string());
         evidence_refs.push("profile:keywords".to_string());
         evidence_refs.push("repo:description".to_string());
     }
+
+    apply_profile_focus_caps(
+        enriched,
+        profile,
+        &issue_text,
+        &repo_text,
+        &mut score,
+        &mut reasons,
+        &mut evidence_refs,
+    );
 
     if lacks_security_profile(profile) && looks_like_crypto_security(&issue_text, &repo_text) {
         score = score.min(35);
@@ -327,12 +366,12 @@ pub fn risk_score(tags: &[RiskTag]) -> i32 {
 pub fn rank_score(category: RecommendationCategory, scores: &ValueScores) -> i32 {
     let value = match category {
         RecommendationCategory::HighValueReady | RecommendationCategory::HighValueNeedsScoping => {
-            scores.repo_influence_score as f64 * 0.35
-                + scores.profile_fit_score as f64 * 0.25
+            scores.profile_fit_score as f64 * 0.35
                 + scores.execution_quality_score as f64 * 0.25
+                + scores.repo_influence_score as f64 * 0.20
                 + scores.maintainer_signal_score as f64 * 0.10
                 + scores.freshness_score as f64 * 0.05
-                - scores.risk_score as f64 * 0.20
+                - scores.risk_score as f64 * 0.25
         }
         RecommendationCategory::NicheButActionable => {
             scores.profile_fit_score as f64 * 0.40
@@ -453,15 +492,52 @@ fn profile_terms(profile: &ProfileConfig) -> Vec<String> {
     terms
 }
 
+fn profile_domain_terms(profile: &ProfileConfig) -> Vec<String> {
+    let mut terms = Vec::new();
+    for item in profile.tech_stack.iter().chain(profile.keywords.iter()) {
+        let normalized = normalize(item);
+        terms.extend(
+            domain_aliases(&normalized)
+                .iter()
+                .map(|alias| alias.to_string()),
+        );
+    }
+    terms.sort();
+    terms.dedup();
+    terms
+}
+
 fn aliases(term: &str) -> &'static [&'static str] {
     match term {
         "typescript" => &["ts", "tsx"],
         "javascript" => &["js", "jsx"],
         "node js" => &["node", "nodejs", "npm"],
-        "react" => &["jsx", "tsx", "component", "hooks"],
+        "frontend" => &["browser", "component", "components", "form", "forms", "ui"],
+        "react" => &[
+            "jsx",
+            "tsx",
+            "component",
+            "components",
+            "hooks",
+            "form",
+            "forms",
+        ],
+        "ui" => &["component", "components", "browser", "form", "forms"],
+        "browser" => &["dom", "frontend", "ui"],
         "python" => &["py", "pytest"],
         "go" => &["golang"],
         "rust" => &["cargo", "rs"],
+        "compiler" => &["diagnostic", "lint", "lints"],
+        "backend" => &[
+            "api",
+            "async",
+            "concurrency",
+            "runtime",
+            "service",
+            "server",
+        ],
+        "performance" => &["benchmark", "profiler", "profiling"],
+        "data" => &["dataset", "profiler", "training"],
         "cli" => &["command line", "terminal", "subcommand", "base command"],
         "developer tools" | "developer tool" => &[
             "developer tools",
@@ -480,6 +556,77 @@ fn aliases(term: &str) -> &'static [&'static str] {
         ],
         _ => &[],
     }
+}
+
+fn domain_aliases(term: &str) -> &'static [&'static str] {
+    match term {
+        "frontend" => &[
+            "browser",
+            "component",
+            "components",
+            "dom",
+            "form",
+            "forms",
+            "render",
+            "ui",
+        ],
+        "react" => &[
+            "component",
+            "components",
+            "form",
+            "forms",
+            "hooks",
+            "render",
+        ],
+        "ui" => &[
+            "button",
+            "component",
+            "components",
+            "form",
+            "forms",
+            "render",
+        ],
+        "browser" => &["dom", "render", "status", "ui"],
+        "rust" => &["diagnostic", "lint", "lints", "metadata", "path", "syscall"],
+        "go" => &["api", "docker", "service", "server"],
+        "backend" => &[
+            "api",
+            "async",
+            "backpressure",
+            "concurrency",
+            "docker",
+            "mpsc",
+            "runtime",
+            "service",
+            "server",
+        ],
+        "compiler" => &["diagnostic", "lint", "lints", "metadata"],
+        "performance" => &["benchmark", "profiler", "profiling"],
+        "python" => &["profiler", "pytest", "training", "validation"],
+        "data" => &["dataset", "profiler", "training", "validation"],
+        "testing" => &["regression", "test", "tests", "validation"],
+        "cli" => &["command", "completion", "terminal"],
+        "developer tools" | "developer tool" => &["sdk", "tooling"],
+        "ai" | "llm" | "agent" => &["eval", "evaluation", "memory", "prompt", "sampling"],
+        "kubernetes" | "docker" | "ci" | "infrastructure" => &[
+            "container",
+            "deploy",
+            "dockerfile",
+            "helm",
+            "manifest",
+            "sync",
+        ],
+        _ => &[],
+    }
+}
+
+fn language_matches_profile(enriched: &EnrichedIssue, profile_terms: &[String]) -> bool {
+    enriched
+        .repository
+        .language
+        .as_deref()
+        .map(normalize)
+        .is_some_and(|language| matching_terms(&language, profile_terms).len() == 1)
 }
 
 fn wants_cli_or_devtools(profile: &ProfileConfig) -> bool {
@@ -523,6 +670,347 @@ fn looks_like_cli_or_devtool(issue_text: &str, repo_text: &str) -> bool {
         ],
     )
 }
+
+fn cli_devtool_boost_allowed(
+    enriched: &EnrichedIssue,
+    profile: &ProfileConfig,
+    issue_text: &str,
+    repo_text: &str,
+) -> bool {
+    let tech_stack = profile
+        .tech_stack
+        .iter()
+        .map(|item| normalize(item))
+        .collect::<Vec<_>>();
+    let language = enriched
+        .repository
+        .language
+        .as_deref()
+        .map(normalize)
+        .unwrap_or_default();
+    if !language.is_empty() && tech_stack.iter().any(|term| term == &language) {
+        return true;
+    }
+
+    if tech_stack.iter().any(|term| term == "python") {
+        let text = format!("{issue_text} {repo_text}");
+        return contains_any(
+            &text,
+            &[
+                "python",
+                "pandas",
+                "dataframe",
+                "dataset",
+                "machine learning",
+                "package manager",
+                "profiler",
+                "training",
+            ],
+        );
+    }
+
+    true
+}
+
+fn apply_profile_focus_caps(
+    enriched: &EnrichedIssue,
+    profile: &ProfileConfig,
+    issue_text: &str,
+    repo_text: &str,
+    score: &mut i32,
+    reasons: &mut Vec<String>,
+    evidence_refs: &mut Vec<String>,
+) {
+    let profile_terms = profile_terms(profile);
+
+    if profile_terms
+        .iter()
+        .any(|term| matches!(term.as_str(), "ai" | "llm" | "agent"))
+    {
+        let issue_matches = focus_matches(issue_text, AI_FOCUS_TERMS);
+        let repo_matches = focus_matches(repo_text, AI_FOCUS_TERMS);
+        let only_generic_agent =
+            issue_matches.len() == 1 && issue_matches[0] == "agent" && repo_matches.is_empty();
+        if issue_matches.is_empty() || only_generic_agent {
+            *score = (*score).min(55);
+            reasons.push(
+                "AI/agent profile requires issue-level AI, LLM, agent, prompt, eval, or model evidence"
+                    .to_string(),
+            );
+            evidence_refs.push("profile:keywords".to_string());
+        }
+    }
+
+    if profile_terms.iter().any(|term| {
+        matches!(
+            term.as_str(),
+            "kubernetes" | "docker" | "ci" | "infrastructure"
+        )
+    }) && !has_focus_signal(issue_text, DEVOPS_FOCUS_TERMS)
+    {
+        *score = (*score).min(55);
+        reasons.push(
+            "DevOps/infra profile requires issue-level container, deploy, CI, Kubernetes, Docker, or infrastructure evidence"
+                .to_string(),
+        );
+        evidence_refs.push("profile:keywords".to_string());
+    }
+
+    let language = enriched
+        .repository
+        .language
+        .as_deref()
+        .map(normalize)
+        .unwrap_or_default();
+    if is_backend_systems_profile(profile)
+        && !matches!(language.as_str(), "rust" | "go")
+        && !has_focus_signal(issue_text, BACKEND_SYSTEMS_FOCUS_TERMS)
+    {
+        *score = (*score).min(55);
+        reasons.push(
+            "Rust/Go backend profile requires Rust, Go, compiler, runtime, parser, concurrency, or backend evidence"
+                .to_string(),
+        );
+        evidence_refs.push("profile:keywords".to_string());
+    }
+
+    if profile_terms.iter().any(|term| {
+        matches!(
+            term.as_str(),
+            "frontend" | "react" | "ui" | "browser" | "dom"
+        )
+    }) && !has_frontend_focus_signal(issue_text)
+    {
+        *score = (*score).min(58);
+        reasons.push(
+            "Frontend profile requires issue-level UI, React, browser, component-with-UI-context, or form evidence"
+                .to_string(),
+        );
+        evidence_refs.push("profile:keywords".to_string());
+    }
+
+    let python_data_cli_profile = profile
+        .tech_stack
+        .iter()
+        .map(|item| normalize(item))
+        .any(|term| term == "python")
+        && profile
+            .keywords
+            .iter()
+            .map(|item| normalize(item))
+            .any(|term| matches!(term.as_str(), "cli" | "data" | "testing" | "pandas"));
+    if python_data_cli_profile && !has_focus_signal(issue_text, PYTHON_DATA_CLI_FOCUS_TERMS) {
+        *score = (*score).min(58);
+        reasons.push(
+            "Python data/CLI profile requires issue-level CLI, data, notebook, package, testing, or traceback evidence"
+                .to_string(),
+        );
+        evidence_refs.push("profile:tech_stack".to_string());
+    } else if python_data_cli_profile {
+        let python_context = language == "python"
+            || has_focus_signal(issue_text, PYTHON_CONTEXT_TERMS)
+            || has_focus_signal(repo_text, PYTHON_CONTEXT_TERMS);
+        if !python_context {
+            *score = (*score).min(55);
+            reasons.push(
+                "Python data/CLI profile requires Python, data, notebook, package, or testing context beyond generic command-line evidence"
+                    .to_string(),
+            );
+            evidence_refs.push("profile:tech_stack".to_string());
+        }
+    }
+}
+
+fn is_backend_systems_profile(profile: &ProfileConfig) -> bool {
+    let tech_stack = profile
+        .tech_stack
+        .iter()
+        .map(|item| normalize(item))
+        .collect::<Vec<_>>();
+    let keywords = profile
+        .keywords
+        .iter()
+        .map(|item| normalize(item))
+        .collect::<Vec<_>>();
+    let has_backend_keyword = keywords.iter().any(|term| {
+        matches!(
+            term.as_str(),
+            "backend" | "compiler" | "performance" | "cargo"
+        )
+    });
+    let has_rust_and_go =
+        tech_stack.iter().any(|term| term == "rust") && tech_stack.iter().any(|term| term == "go");
+    has_backend_keyword || has_rust_and_go
+}
+
+fn has_focus_signal(searchable: &str, terms: &[&str]) -> bool {
+    !focus_matches(searchable, terms).is_empty()
+}
+
+fn has_frontend_focus_signal(issue_text: &str) -> bool {
+    if has_focus_signal(issue_text, FRONTEND_STRONG_FOCUS_TERMS) {
+        return true;
+    }
+
+    let component_match = has_focus_signal(issue_text, &["component", "components"]);
+    component_match && has_focus_signal(issue_text, FRONTEND_COMPONENT_CONTEXT_TERMS)
+}
+
+fn focus_matches(searchable: &str, terms: &[&str]) -> Vec<String> {
+    let terms = terms.iter().map(|term| normalize(term)).collect::<Vec<_>>();
+    matching_terms(searchable, &terms)
+}
+
+const AI_FOCUS_TERMS: &[&str] = &[
+    "ai",
+    "llm",
+    "agent",
+    "anthropic",
+    "claude",
+    "eval",
+    "evaluation",
+    "inference",
+    "machine learning",
+    "memory",
+    "model",
+    "openai",
+    "prompt",
+    "pytorch",
+    "rag",
+    "sampling",
+    "tensorflow",
+    "training",
+    "vllm",
+];
+
+const DEVOPS_FOCUS_TERMS: &[&str] = &[
+    "ci",
+    "cloud",
+    "compose",
+    "container",
+    "containers",
+    "deploy",
+    "deployment",
+    "docker",
+    "dockerfile",
+    "gitops",
+    "helm",
+    "infra",
+    "infrastructure",
+    "kubernetes",
+    "manifest",
+    "pipeline",
+    "runner",
+    "runners",
+    "terraform",
+];
+
+const BACKEND_SYSTEMS_FOCUS_TERMS: &[&str] = &[
+    "asm",
+    "assembly",
+    "backend",
+    "backpressure",
+    "cargo",
+    "compiler",
+    "concurrency",
+    "go",
+    "golang",
+    "mpsc",
+    "parser",
+    "runtime",
+    "rust",
+    "syscall",
+];
+
+const FRONTEND_STRONG_FOCUS_TERMS: &[&str] = &[
+    "accessibility",
+    "browser",
+    "button",
+    "css",
+    "dom",
+    "focus",
+    "form",
+    "forms",
+    "frontend",
+    "hook",
+    "hooks",
+    "modal",
+    "page",
+    "react",
+    "screen reader",
+    "theme",
+    "ui",
+    "websocket",
+];
+
+const FRONTEND_COMPONENT_CONTEXT_TERMS: &[&str] = &[
+    "accessibility",
+    "browser",
+    "button",
+    "css",
+    "dom",
+    "focus",
+    "form",
+    "forms",
+    "frontend",
+    "hook",
+    "hooks",
+    "modal",
+    "page",
+    "react",
+    "screen reader",
+    "theme",
+    "ui",
+];
+
+const PYTHON_DATA_CLI_FOCUS_TERMS: &[&str] = &[
+    "cli",
+    "command",
+    "completion",
+    "data",
+    "dataframe",
+    "dataset",
+    "importerror",
+    "jupyter",
+    "notebook",
+    "package manager",
+    "pandas",
+    "pip",
+    "profiler",
+    "pyproject",
+    "pytest",
+    "regression",
+    "subcommand",
+    "terminal",
+    "test",
+    "testing",
+    "tests",
+    "traceback",
+    "training",
+    "venv",
+];
+
+const PYTHON_CONTEXT_TERMS: &[&str] = &[
+    "data",
+    "dataframe",
+    "dataset",
+    "importerror",
+    "jupyter",
+    "machine learning",
+    "notebook",
+    "package manager",
+    "pandas",
+    "pip",
+    "profiler",
+    "py",
+    "pyproject",
+    "pytest",
+    "python",
+    "traceback",
+    "training",
+    "uv",
+    "venv",
+];
 
 fn lacks_security_profile(profile: &ProfileConfig) -> bool {
     let terms = profile_terms(profile);

@@ -27,10 +27,34 @@ fn recommendation_eval_fixtures_run_against_current_ranking_pipeline() {
     let report = evaluate_named_datasets(datasets());
 
     assert_eq!(report.datasets.len(), 8);
-    assert_eq!(report.overall.samples, 48);
+    assert_eq!(report.overall.samples, 80);
     assert!(report.overall.visible <= report.overall.samples);
     assert!((0.0..=1.0).contains(&report.overall.precision_at5));
     assert!((0.0..=1.0).contains(&report.overall.precision_at10));
+    assert_eq!(
+        report.overall.reject_leakage, 0,
+        "V2 quality gate should hide reject samples"
+    );
+    assert_eq!(
+        report.overall.dashboard_noise_leakage, 0,
+        "V2 quality gate should hide dashboard and toy/no-code noise"
+    );
+    assert_eq!(
+        report.overall.competition_leakage, 0,
+        "V2 quality gate should hide claimed or PR-contested samples"
+    );
+    assert!(
+        report.overall.profile_mismatch_leakage <= 1,
+        "V2 should keep profile mismatch leakage within the stage target"
+    );
+    assert_eq!(
+        report.overall.stale_high_rank_leakage, 0,
+        "V2 freshness policy should prevent stale samples from receiving high freshness"
+    );
+    assert_eq!(
+        report.overall.feedback_cooldown_passes, report.overall.feedback_cooldown_total,
+        "V2 feedback cooldown samples should all pass"
+    );
 
     let dataset_names = report
         .datasets
@@ -72,6 +96,12 @@ fn recommendation_eval_fixtures_run_against_current_ranking_pipeline() {
             !dataset.ranked.is_empty(),
             "{} should include ranked samples",
             dataset.dataset
+        );
+        assert!(
+            dataset.failures.is_empty(),
+            "{} should not have expectation failures: {:?}",
+            dataset.dataset,
+            dataset.failures
         );
         assert!(
             dataset
@@ -191,6 +221,7 @@ fn visible_jsonl(report: &EvaluationReport) -> String {
                 "expectedQuality": item.expected_quality,
                 "expectedBehavior": item.expected_behavior,
                 "finalFeedScore": item.final_feed_score,
+                "freshnessBoost": item.freshness_boost,
                 "profileFit": item.profile_fit,
                 "sourceTier": item.source_tier,
             });

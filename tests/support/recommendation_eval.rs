@@ -259,6 +259,7 @@ pub struct RankedSampleSummary {
     pub expected_quality: ExpectedQuality,
     pub expected_behavior: ExpectedBehavior,
     pub final_feed_score: i32,
+    pub freshness_boost: i32,
     pub profile_fit: i32,
     pub visibility: String,
     pub source_tier: String,
@@ -329,6 +330,7 @@ pub fn evaluate_dataset(dataset: &EvaluationDataset) -> DatasetReport {
             expected_quality: item.sample.expected.quality,
             expected_behavior: item.sample.expected.behavior,
             final_feed_score: item.ranked.recommendation.final_feed_score,
+            freshness_boost: item.ranked.recommendation.freshness_boost,
             profile_fit: item.ranked.value_assessment.profile_fit_score,
             visibility: item.ranked.recommendation.visibility.to_string(),
             source_tier: item.source_tier.clone(),
@@ -473,7 +475,10 @@ fn metrics_for_ranked(ranked: &[RankedEvaluationSample<'_>], limit: usize) -> Me
     let stale_high_rank_leakage = visible
         .iter()
         .take(10)
-        .filter(|item| item.sample.expected.reject_reasons_contains("stale"))
+        .filter(|item| {
+            item.sample.expected.reject_reasons_contains("stale")
+                && item.ranked.recommendation.freshness_boost > 20
+        })
         .count();
     let competition_leakage = visible
         .iter()

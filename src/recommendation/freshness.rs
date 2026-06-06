@@ -28,6 +28,13 @@ pub fn assess_freshness(enriched: &EnrichedIssue) -> FreshnessAssessment {
         reasons.push("Issue has recent activity (+8)".to_string());
     }
 
+    if let Some(cap) = issue_age_freshness_cap(enriched) {
+        if boost > cap {
+            boost = cap;
+            reasons.push(format!("Issue age limits freshness contribution to +{cap}"));
+        }
+    }
+
     FreshnessAssessment { boost, reasons }
 }
 
@@ -43,5 +50,21 @@ fn issue_updated_boost(updated_at: &str) -> i32 {
         value if value <= 24 * 14 => 18,
         value if value <= 24 * 30 => 10,
         _ => 0,
+    }
+}
+
+fn issue_age_freshness_cap(enriched: &EnrichedIssue) -> Option<i32> {
+    let Ok(created_at) = DateTime::parse_from_rfc3339(&enriched.issue.created_at) else {
+        return None;
+    };
+    let age_days = (Utc::now() - created_at.with_timezone(&Utc)).num_days();
+    let has_meaningful_recent_activity =
+        enriched.activity.maintainer_recent_response || enriched.issue.comments_count > 0;
+    match age_days {
+        value if value > 365 && has_meaningful_recent_activity => Some(20),
+        value if value > 365 => Some(18),
+        value if value > 180 && has_meaningful_recent_activity => Some(42),
+        value if value > 180 => Some(30),
+        _ => None,
     }
 }

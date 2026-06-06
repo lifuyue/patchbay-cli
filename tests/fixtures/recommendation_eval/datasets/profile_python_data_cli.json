@@ -118,6 +118,99 @@
       }
     },
     {
+      "id": "python_dotnet_command_line_profile_mismatch",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "dotnet/command-line-api",
+        "number": 2137,
+        "title": "GetCompletions should check exit code of invoked application",
+        "body": "Suggestion completions should check the invoked command exit code and avoid treating non-zero stdout as completions.",
+        "labels": ["bug", "help wanted"],
+        "createdAgeDays": 1400,
+        "updatedAgeDays": 30
+      },
+      "repository": {
+        "description": "Command-line parser and completions for .NET",
+        "language": "C#",
+        "stars": 3665,
+        "forks": 423,
+        "watchers": 241,
+        "openIssues": 250,
+        "topics": ["command-line", "terminal", "parser"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Generic command-line evidence without Python/data context should not satisfy the Python data/CLI profile."]
+      }
+    },
+    {
+      "id": "python_sample_notebook_docs_noise",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "datafuselabs/datafuse",
+        "number": 17460,
+        "title": "Feature: add sample directory with jupyter notebook",
+        "body": "Add sample directory with Jupyter notebook to streamline onboarding. Provide interactive learning resources, tutorial structure, hands-on examples, and integration guides.",
+        "labels": ["C-feature", "good first issue"],
+        "createdAgeDays": 60,
+        "updatedAgeDays": 10
+      },
+      "repository": {
+        "description": "Cloud native data warehouse with SQL and Python examples",
+        "language": "Rust",
+        "stars": 9313,
+        "forks": 880,
+        "watchers": 93,
+        "openIssues": 1000,
+        "topics": ["data", "python", "sql"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["toy_no_code"],
+        "reasons": ["Sample notebook and onboarding tutorial work is documentation/content noise."]
+      }
+    },
+    {
+      "id": "python_created_pr_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "datafuselabs/datafuse",
+        "number": 5039,
+        "title": "Add valgrind stateless test for check memory leak",
+        "body": "Add a valgrind stateless test for checking memory leaks. Suggested validation: run the stateless test suite with cargo-valgrind.",
+        "labels": ["C-testing", "good first issue"],
+        "createdAgeDays": 1000,
+        "updatedAgeDays": 60
+      },
+      "repository": {
+        "description": "Cloud native data warehouse with SQL and Python examples",
+        "language": "Rust",
+        "stars": 9313,
+        "forks": 880,
+        "watchers": 93,
+        "openIssues": 1000,
+        "topics": ["data", "python", "testing"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I have created PR for this task.",
+          "createdAgeDays": 7
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Created-PR comment should hide the issue."]
+      }
+    },
+    {
       "id": "python_currency_converter_reject",
       "sourceTier": "global",
       "issue": {
@@ -144,6 +237,93 @@
         "behavior": "hidden",
         "rejectReasons": ["toy_no_code"],
         "reasons": ["Toy beginner script should not fill serious Python/data ranking."]
+      }
+    },
+    {
+      "id": "python_quiz_game_reject",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "hackdartstorm/Python",
+        "number": 1214,
+        "title": "[BEGINNER] Build Quiz Game CLI",
+        "body": "Create a beginner quiz game CLI. The script should ask fixed questions, check answers, and print the score.",
+        "labels": ["beginner", "good first issue"],
+        "createdAgeDays": 4,
+        "updatedAgeDays": 3
+      },
+      "repository": {
+        "description": "Collection of beginner Python scripts",
+        "language": "Python",
+        "stars": 9,
+        "forks": 12,
+        "watchers": 0,
+        "openIssues": 500,
+        "topics": ["python", "beginner", "learning"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["toy_no_code"],
+        "reasons": ["Beginner quiz-game script is training-content noise, not a serious Python/data issue."]
+      }
+    },
+    {
+      "id": "python_codegraph_demo_video_reject",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "CodeGraphContext/CodeGraphContext",
+        "number": 455,
+        "title": "Add guidelines and demo video for installing and using codegraphcontext on Mac",
+        "body": "Create a windows_setup_guide.md file and send a no-voice demo video over Discord so it can be referenced in the README.",
+        "labels": ["good first issue"],
+        "createdAgeDays": 4,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Code graph context CLI",
+        "language": "Python",
+        "stars": 3621,
+        "forks": 652,
+        "watchers": 19,
+        "openIssues": 80,
+        "topics": ["python", "cli"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["toy_no_code"],
+        "reasons": ["Install guide plus demo video is documentation/media work, not a Python data/CLI coding issue."]
+      }
+    },
+    {
+      "id": "python_codegraph_docker_container_profile_mismatch",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "CodeGraphContext/CodeGraphContext",
+        "number": 391,
+        "title": "Create a docker container for the entire package+python",
+        "body": "Export the package as a Docker container on Docker Hub and add the steps to publish it.",
+        "labels": ["good first issue"],
+        "createdAgeDays": 20,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "Code graph context CLI",
+        "language": "Python",
+        "stars": 3621,
+        "forks": 652,
+        "watchers": 19,
+        "openIssues": 80,
+        "topics": ["python", "cli"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Docker publishing work should not rank for Python data/CLI unless the issue has CLI, data, testing, package, or traceback evidence."]
       }
     },
     {
@@ -177,4 +357,3 @@
     }
   ]
 }
-

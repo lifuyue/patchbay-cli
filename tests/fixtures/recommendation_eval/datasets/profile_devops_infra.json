@@ -118,13 +118,48 @@
       }
     },
     {
+      "id": "devops_hold_off_helm_post_renderer_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "GoogleContainerTools/skaffold",
+        "number": 5387,
+        "title": "add the post-render option to the helm deploy",
+        "body": "Implement the --post-render flag in helm deploy so kustomize can be used after helm rendering.",
+        "labels": ["help wanted", "good first issue", "deploy/helm"],
+        "createdAgeDays": 1800,
+        "updatedAgeDays": 400
+      },
+      "repository": {
+        "description": "Kubernetes and Docker developer workflow tool",
+        "language": "Go",
+        "stars": 15834,
+        "forks": 1703,
+        "watchers": 181,
+        "openIssues": 600,
+        "topics": ["kubernetes", "docker", "helm", "deploy"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I'd actually recommend holding off on this for the time being because we're working on major rendering and deployment changes.",
+          "createdAgeDays": 300
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Maintainer hold-off guidance should keep the issue out of the feed."]
+      }
+    },
+    {
       "id": "devops_onchain_payout_reject",
       "sourceTier": "global",
       "issue": {
         "repoFullName": "iiitl/decentralized-uptime-monitoring",
         "number": 3,
         "title": "Verify On-Chain Transaction Before Marking Payout as Completed",
-        "body": "Verify on-chain transaction status before marking a payout as completed. The repository is an experimental uptime monitor and the validation path is unclear.",
+        "body": "The payout worker currently marks a PayoutTransaction as completed as soon as ConfirmationStatusFinalized is detected. Update processPayoutRequest in payout_worker.go to fetch the confirmed transaction, parse postBalances and preBalances, and verify the amount before marking the payout complete.",
         "labels": ["good first issue"],
         "createdAgeDays": 8,
         "updatedAgeDays": 8
@@ -174,7 +209,64 @@
         "rejectReasons": ["profile_mismatch"],
         "reasons": ["Browser localization issue should not fill DevOps/infra ranking."]
       }
+    },
+    {
+      "id": "devops_storybook_docs_profile_mismatch",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "constructorfabric/cyberware-frontx",
+        "number": 305,
+        "title": "Set up Storybook for component documentation",
+        "body": "Set up Storybook as the component documentation and visual testing foundation for the UI kit. Install Storybook with Vite, document base components, and add npm scripts.",
+        "labels": ["documentation", "good-first-issue"],
+        "createdAgeDays": 2,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "Low-code AI SaaS frontend",
+        "language": "TypeScript",
+        "stars": 1,
+        "forks": 0,
+        "watchers": 0,
+        "openIssues": 80,
+        "topics": ["ai", "react", "tailwind", "typescript"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Storybook component documentation has no container, deploy, CI, Kubernetes, Docker, or infrastructure evidence."]
+      }
+    },
+    {
+      "id": "devops_old_low_impact_dockerfile_should_hide",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "golang-cafe/job-board",
+        "number": 45,
+        "title": "[DX] dockerize Go app into Dockerfile for testing (Dockerfile.local) and production (Dockerfile)",
+        "body": "Right now the Go server runs without Docker. The app is deployed on Digital Ocean App Platform. Add a prod Dockerfile and a test/local Dockerfile to make the project portable and easier to run locally.",
+        "labels": ["enhancement", "help wanted", "ux", "tech debt", "beginner", "backend"],
+        "createdAgeDays": 1550,
+        "updatedAgeDays": 1120
+      },
+      "repository": {
+        "description": "Golang Cafe job board",
+        "language": "HTML",
+        "stars": 227,
+        "forks": 58,
+        "watchers": 5,
+        "openIssues": 40,
+        "topics": ["go", "golang", "jobboard"],
+        "pushedAgeDays": 300
+      },
+      "expected": {
+        "quality": "weak",
+        "behavior": "hidden",
+        "rejectReasons": ["stale"],
+        "reasons": ["Old low-impact Dockerfile task should not be the DevOps front page."]
+      }
     }
   ]
 }
-

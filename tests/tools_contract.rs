@@ -139,7 +139,7 @@ async fn tool_runtime_uses_mocked_github_and_applies_prepare_gate() {
     assert!(scout_candidates
         .iter()
         .all(|candidate| candidate["category"] != "filtered_low_depth"));
-    assert_eq!(scout.structured_content["filteredCount"], 1);
+    assert_eq!(scout.structured_content["filteredCount"], 2);
     assert!(scout_candidates[0]["gates"]["repoInfluence"]["status"].is_string());
     assert!(scout_candidates[0]["recommendation"]["finalFeedScore"].is_number());
     let events = load_events(&paths).unwrap();

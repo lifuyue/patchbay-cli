@@ -70,6 +70,259 @@
       }
     },
     {
+      "id": "core_pr_in_progress_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "aws/aws-cdk",
+        "number": 37783,
+        "title": "TableV2MultiAccountReplica missing top-level SSESpecification",
+        "body": "Using TableV2MultiAccountReplica with customerManagedKey generates invalid CloudFormation. Expected behavior: top-level SSESpecification is rendered. Suggested fix: render the same SSESpecification as TableV2 and verify with unit tests.",
+        "labels": ["bug", "good first issue", "effort/small"],
+        "createdAgeDays": 31,
+        "updatedAgeDays": 5
+      },
+      "repository": {
+        "description": "Cloud development kit for infrastructure as code",
+        "language": "TypeScript",
+        "stars": 12794,
+        "forks": 4200,
+        "watchers": 200,
+        "openIssues": 2700,
+        "topics": ["typescript", "cloud", "infrastructure"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Looks like there's already a pull request in progress now. I'll yield to that one.",
+          "createdAgeDays": 3
+        },
+        {
+          "body": "The PR fixing this is #37982 and is pending maintainer review.",
+          "createdAgeDays": 2
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Natural-language PR-in-progress evidence should hide the issue even without timeline PR refs."]
+      }
+    },
+    {
+      "id": "core_assign_me_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "mattgodbolt/compiler-explorer",
+        "number": 4689,
+        "title": "Try and reduce deduplication in asm-parser-ewavr",
+        "body": "The asm parser has duplicate implementation paths. It would be useful to deduplicate the parser code where beneficial.",
+        "labels": ["help wanted", "good first issue"],
+        "createdAgeDays": 2100,
+        "updatedAgeDays": 120
+      },
+      "repository": {
+        "description": "Compiler explorer and assembly parser tooling",
+        "language": "TypeScript",
+        "stars": 18815,
+        "forks": 2051,
+        "watchers": 244,
+        "openIssues": 900,
+        "topics": ["compiler", "go", "rust"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Can you assign me this issue?",
+          "createdAgeDays": 20
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Assign-me comments mean the issue is already claimed enough to hide from the feed."]
+      }
+    },
+    {
+      "id": "core_low_trust_fork_anomaly_should_hide",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "sis-inf/escuadra",
+        "number": 222,
+        "title": "fix: corregir cli.py para que el help de cada subcomando sea descriptivo",
+        "body": "cli.py defines subcommands and their help text is incomplete. Update help strings for each subcommand and argument.",
+        "labels": ["size:S", "good-first-issue"],
+        "createdAgeDays": 3,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Small Python CLI project",
+        "language": "Python",
+        "stars": 1,
+        "forks": 37,
+        "watchers": 0,
+        "openIssues": 40,
+        "topics": [],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Yo quiero contribuir con este issue",
+          "createdAgeDays": 1
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["low_trust_repo", "claimed_or_pr"],
+        "reasons": ["Fork/star anomaly and claimed comment should not appear in the feed."]
+      }
+    },
+    {
+      "id": "core_awaiting_pr_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "rjsf-team/react-jsonschema-form",
+        "number": 3450,
+        "title": "Nested dependencies not updated correctly",
+        "body": "Conditional schema property values do not update as expected in a React form. Reproduce with the linked playground and add a regression test.",
+        "labels": ["bug", "help wanted"],
+        "createdAgeDays": 900,
+        "updatedAgeDays": 5
+      },
+      "repository": {
+        "description": "React JSON schema form components",
+        "language": "TypeScript",
+        "stars": 15798,
+        "forks": 2320,
+        "watchers": 159,
+        "openIssues": 500,
+        "topics": ["react", "forms", "typescript", "ui"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I can take care of the bug, if nobody working on the issue.",
+          "createdAgeDays": 60
+        },
+        {
+          "body": "I am awaiting a PR from that contributor.",
+          "createdAgeDays": 20
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Claim plus awaiting-PR comments should hide the issue."]
+      }
+    },
+    {
+      "id": "core_want_to_pick_this_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "appbaseio/reactivesearch",
+        "number": 450,
+        "title": "Enhancement: URLParams props for ReactiveMap component",
+        "body": "Add URLParams support for the map component so center and zoom state can be reflected in querystring parameters.",
+        "labels": ["enhancement", "help wanted", "good first issue"],
+        "createdAgeDays": 1800,
+        "updatedAgeDays": 200
+      },
+      "repository": {
+        "description": "React search UI components",
+        "language": "JavaScript",
+        "stars": 4921,
+        "forks": 469,
+        "watchers": 57,
+        "openIssues": 300,
+        "topics": ["react", "ui", "components", "javascript"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I want to pick this, is it available?",
+          "createdAgeDays": 100
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Pick-this comments should count as claim evidence."]
+      }
+    },
+    {
+      "id": "core_take_it_up_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "angular-ui/ui-grid",
+        "number": 7147,
+        "title": "Tab focus order and screen reader text for column headers",
+        "body": "Keyboard focus moves to row checkboxes instead of the next column header. Screen reader row and column announcements are incorrect.",
+        "labels": ["a11y", "good first issue"],
+        "createdAgeDays": 1800,
+        "updatedAgeDays": 100
+      },
+      "repository": {
+        "description": "Angular JavaScript UI grid",
+        "language": "JavaScript",
+        "stars": 5378,
+        "forks": 2423,
+        "watchers": 344,
+        "openIssues": 700,
+        "topics": ["javascript", "ui-grid", "ui"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Does the issue still exist? If yes, I would like to take it up.",
+          "createdAgeDays": 40
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Take-it-up comments are claim evidence."]
+      }
+    },
+    {
+      "id": "core_solved_support_question_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "appbaseio/reactivesearch",
+        "number": 831,
+        "title": "DynamicRangeInput",
+        "body": "Feature request/question. Is there a way to combine DynamicRangeSlider min/max display with RangeInput value editing?",
+        "labels": ["enhancement", "help wanted"],
+        "createdAgeDays": 1800,
+        "updatedAgeDays": 300
+      },
+      "repository": {
+        "description": "React search UI components",
+        "language": "JavaScript",
+        "stars": 4921,
+        "forks": 469,
+        "watchers": 57,
+        "openIssues": 300,
+        "topics": ["react", "ui", "components", "javascript"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I've solved this problem by using an external Elasticsearch API call to store the min/max values in state.",
+          "createdAgeDays": 300
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["support_question"],
+        "reasons": ["Solved support-question workaround should not rank as an open implementation issue."]
+      }
+    },
+    {
       "id": "core_dependency_dashboard_should_hide",
       "sourceTier": "global",
       "issue": {
@@ -125,6 +378,116 @@
         "behavior": "hidden",
         "rejectReasons": ["toy_no_code"],
         "reasons": ["Toy converter tasks should not pollute high-value ranking."]
+      }
+    },
+    {
+      "id": "core_comment_says_can_be_closed_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "astral-sh/uv",
+        "number": 7040,
+        "title": "[feat] Log parent package when erroring during dependency install",
+        "body": "When uv fails during dependency install, the error does not show the parent package that introduced the dependency. Expected behavior: CLI logs the parent package chain.",
+        "labels": ["help wanted", "cli", "error messages"],
+        "createdAgeDays": 640,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "Fast Python package manager and CLI",
+        "language": "Rust",
+        "stars": 86000,
+        "forks": 3200,
+        "watchers": 170,
+        "openIssues": 650,
+        "topics": ["python", "packaging", "resolver"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I verified this against current master and the parent chain is now shown. Looks like this issue can be closed.",
+          "createdAgeDays": 1
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Comment evidence says the issue is fixed enough to close."]
+      }
+    },
+    {
+      "id": "core_submitted_pr_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "cornellius-gp/gpytorch",
+        "number": 724,
+        "title": "Standardize predictors for ARD",
+        "body": "Examples should standardize input data for ARD kernels to avoid zero gradients. Suggested fix: update docs and examples with standardized predictors.",
+        "labels": ["documentation", "good first issue"],
+        "createdAgeDays": 1500,
+        "updatedAgeDays": 10
+      },
+      "repository": {
+        "description": "Gaussian process models in PyTorch",
+        "language": "Python",
+        "stars": 3883,
+        "forks": 594,
+        "watchers": 54,
+        "openIssues": 120,
+        "topics": ["python", "pytorch", "machine-learning"],
+        "pushedAgeDays": 5
+      },
+      "comments": [
+        {
+          "body": "I've submitted a PR to address this issue: #2751.",
+          "createdAgeDays": 1
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Submitted PR comment should hide the candidate."]
+      }
+    },
+    {
+      "id": "core_go_ahead_claim_should_hide",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "CodeGraphContext/CodeGraphContext",
+        "number": 583,
+        "title": "New tool/cli cmd",
+        "body": "`cgc prompt` should be a new tool or command so the LLM can adapt to skills.md.",
+        "labels": ["enhancement", "help wanted", "good first issue"],
+        "createdAgeDays": 5,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Code graph context tool",
+        "language": "Python",
+        "stars": 3620,
+        "forks": 652,
+        "watchers": 19,
+        "openIssues": 80,
+        "topics": ["python", "cli"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Shall I work on this?",
+          "createdAgeDays": 1
+        },
+        {
+          "body": "Yes, go ahead! @DhineshPonnarasan",
+          "authorAssociation": "OWNER",
+          "createdAgeDays": 1
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Maintainer-approved contributor claim should hide the issue."]
       }
     },
     {
@@ -191,7 +554,35 @@
         "minProfileFit": 80,
         "reasons": ["Overlay trusted small repo with strong profile fit should not be buried by large weak-profile repos."]
       }
+    },
+    {
+      "id": "core_old_ramalama_epic_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "containers/ramalama",
+        "number": 912,
+        "title": "EPIC: Support for vLLM",
+        "body": "Epic domain: extend local model execution support from LlamaCPP to vLLM. Scope includes CPU-only images for Mac and Windows, research and feasibility analysis for GPU support, and benchmark suite work. Subtasks include separate CPU image work, GPU research, and benchmark tooling.",
+        "labels": ["good first issue", "stale-issue"],
+        "createdAgeDays": 460,
+        "updatedAgeDays": 250
+      },
+      "repository": {
+        "description": "Developer tool for running AI models with containers",
+        "language": "Python",
+        "stars": 2872,
+        "forks": 341,
+        "watchers": 34,
+        "openIssues": 160,
+        "topics": ["ai", "containers", "llm", "podman", "vllm"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "weak",
+        "behavior": "hidden",
+        "rejectReasons": ["stale"],
+        "reasons": ["Old broad EPIC should not remain visible as a default-profile recommendation."]
+      }
     }
   ]
 }
-

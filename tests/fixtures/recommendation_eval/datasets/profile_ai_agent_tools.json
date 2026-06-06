@@ -61,6 +61,186 @@
       }
     },
     {
+      "id": "ai_uv_package_manager_profile_mismatch",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "astral-sh/uv",
+        "number": 7040,
+        "title": "[feat] Log parent package when erroring during dependency install",
+        "body": "When uv fails during dependency install, the error does not show the parent package that introduced the dependency. Expected behavior: CLI logs the parent package chain. Suggested fix: include parent package context in resolver errors and add CLI snapshot tests.",
+        "labels": ["help wanted", "cli", "error messages"],
+        "createdAgeDays": 640,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "Fast Python package manager and CLI",
+        "language": "Rust",
+        "stars": 86000,
+        "forks": 3200,
+        "watchers": 170,
+        "openIssues": 650,
+        "topics": ["python", "packaging", "resolver"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Python package-manager issue is useful elsewhere but lacks AI, LLM, agent, prompt, eval, or model evidence."]
+      }
+    },
+    {
+      "id": "ai_answered_support_question_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "JiahuiYu/generative_inpainting",
+        "number": 12,
+        "title": "How to run multiple images with multiple masks respectively",
+        "body": "I checked the test file and it can only run on one image and mask. I tried a loop and got a TensorFlow graph reuse error in model.build_server_graph.",
+        "labels": ["good first issue"],
+        "createdAgeDays": 2600,
+        "updatedAgeDays": 120
+      },
+      "repository": {
+        "description": "Generative adversarial image inpainting model",
+        "language": "Python",
+        "stars": 3460,
+        "forks": 799,
+        "watchers": 70,
+        "openIssues": 120,
+        "topics": ["tensorflow", "generative-adversarial-network", "machine-learning"],
+        "pushedAgeDays": 200
+      },
+      "comments": [
+        {
+          "body": "Oh thank you, I have found the answer: set reuse=tf.AUTO_REUSE.",
+          "createdAgeDays": 2400
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["support_question"],
+        "reasons": ["Answered how-to support question should not rank as an AI agent task."]
+      }
+    },
+    {
+      "id": "ai_cdk_typescript_profile_mismatch",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "aws/aws-cdk",
+        "number": 26935,
+        "title": "(aws-glue-alpha): struct schema produces unsupported inputStrings",
+        "body": "Schema.struct generates invalid inputStrings for nested Glue structs. Steps to reproduce: build nested struct schema and query with Athena. Suggested fix: update TypeScript schema rendering.",
+        "labels": ["bug", "good first issue"],
+        "createdAgeDays": 1010,
+        "updatedAgeDays": 12
+      },
+      "repository": {
+        "description": "Cloud development kit for infrastructure as code",
+        "language": "TypeScript",
+        "stars": 12794,
+        "forks": 4200,
+        "watchers": 200,
+        "openIssues": 2700,
+        "topics": ["typescript", "cloud", "infrastructure"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["TypeScript infrastructure issue should not be front-page material for AI agent tooling."]
+      }
+    },
+    {
+      "id": "ai_taipy_gui_repo_topic_mismatch",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "Avaiga/taipy",
+        "number": 2747,
+        "title": "Default table editable behaviour broken when dataframe has index",
+        "body": "A Taipy GUI table with a pandas dataframe index fails when editable is enabled. Steps to reproduce: create a dataframe, set index, render tgb.table editable, then add or delete rows. Expected behavior: table editing works.",
+        "labels": ["good first issue", "GUI: Front-End"],
+        "createdAgeDays": 20,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Python app framework for data and AI applications",
+        "language": "Python",
+        "stars": 19228,
+        "forks": 1981,
+        "watchers": 81,
+        "openIssues": 160,
+        "topics": ["ai", "data-visualization", "developer-tools", "python"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Repo-level AI topic is not enough when the issue itself is a generic GUI table bug."]
+      }
+    },
+    {
+      "id": "ai_agenta_reset_password_repo_topic_mismatch",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "agenta-ai/agenta",
+        "number": 2572,
+        "title": "Add Reset Password Functionality to Workspace UI",
+        "body": "Add reset password functionality in the workspace UI. Add a reset password element next to each user, show a confirmation dialog, call the password reset API, and show success or error feedback.",
+        "labels": ["good first issue", "Frontend", "UI"],
+        "createdAgeDays": 60,
+        "updatedAgeDays": 5
+      },
+      "repository": {
+        "description": "LLM application evaluation and agent tooling",
+        "language": "TypeScript",
+        "stars": 4177,
+        "forks": 539,
+        "watchers": 31,
+        "openIssues": 120,
+        "topics": ["agents", "llm-evaluation", "prompt-engineering"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["AI repo context should not make a generic account-management UI issue rank for agent tooling."]
+      }
+    },
+    {
+      "id": "ai_httpie_user_agent_false_positive",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "httpie/cli",
+        "number": 799,
+        "title": "--pretty=all piped to a pager does not work on Windows",
+        "body": "HTTPie color output piped to less or more on Windows does not show colors. Debug output includes regular HTTP headers such as User-Agent. Expected behavior: pretty colored output survives paging.",
+        "labels": ["bug", "windows", "help wanted"],
+        "createdAgeDays": 2200,
+        "updatedAgeDays": 600
+      },
+      "repository": {
+        "description": "HTTP command line client",
+        "language": "Python",
+        "stars": 38203,
+        "forks": 3955,
+        "watchers": 113,
+        "openIssues": 300,
+        "topics": ["cli", "developer-tools", "python", "terminal"],
+        "pushedAgeDays": 5
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["HTTP User-Agent text must not satisfy the AI agent profile."]
+      }
+    },
+    {
       "id": "ai_learning_resource_reject",
       "sourceTier": "global",
       "issue": {
@@ -177,4 +357,3 @@
     }
   ]
 }
-

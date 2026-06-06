@@ -150,7 +150,7 @@ fn aggregate_signals_applies_axis_scores_and_formula() {
     assert_eq!(assessment.attention_score, 70);
     assert_eq!(assessment.execution_score, 50);
     assert_eq!(assessment.profile_fit_score, 50);
-    assert!(assessment.final_rank_score >= 50);
+    assert_eq!(assessment.final_rank_score, 44);
 }
 
 fn fixture() -> EnrichedIssueFixture {
