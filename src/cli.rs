@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -29,6 +31,8 @@ pub enum Command {
     Daily(DailyArgs),
     /// Display local daily reports.
     Report(ReportArgs),
+    /// Run recommendation evaluation workflows.
+    Eval(EvalArgs),
     /// List and call Issue Finder's JSON tool contract.
     Tools(ToolsArgs),
     /// Check local readiness.
@@ -150,6 +154,37 @@ pub struct ReportArgs {
     /// Local date in YYYY-MM-DD form.
     #[arg(long)]
     pub date: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct EvalArgs {
+    #[command(subcommand)]
+    pub command: EvalCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum EvalCommand {
+    /// Generate offline or live recommendation evaluation reports.
+    Recommendation(RecommendationEvalArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct RecommendationEvalArgs {
+    /// Run deterministic offline fixture evaluation.
+    #[arg(long, conflicts_with = "live")]
+    pub offline: bool,
+    /// Run fixed six-profile live evaluation.
+    #[arg(long, conflicts_with = "offline")]
+    pub live: bool,
+    /// Refresh GitHub data for live evaluation.
+    #[arg(long)]
+    pub refresh: bool,
+    /// Candidate limit for live evaluation.
+    #[arg(long, default_value_t = 15)]
+    pub limit: usize,
+    /// Output directory for metrics.json, report.md, and visible.jsonl.
+    #[arg(long)]
+    pub output: PathBuf,
 }
 
 #[derive(Debug, Args)]

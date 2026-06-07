@@ -1,19 +1,51 @@
 use std::collections::{BTreeMap, HashMap};
+use std::fs;
+use std::path::Path;
 
-use chrono::{Duration, Utc};
-use issue_finder::competition::{CompetitionBand, CompetitionFacts};
-use issue_finder::config::ProfileConfig;
-use issue_finder::github::GitHubIssue;
-use issue_finder::github_enrichment::{
+use crate::competition::{CompetitionBand, CompetitionFacts};
+use crate::config::{Config, ProfileConfig};
+use crate::github::GitHubIssue;
+use crate::github_enrichment::{
     EnrichedComment, EnrichedIssue, EnrichedParticipants, TimestampedSample,
 };
-use issue_finder::recommendation::events::IssueKey;
-use issue_finder::recommendation::feed_ranker::{
+use crate::paths::{atomic_write, IssueFinderPaths};
+use crate::recommendation::engine::{RecommendationEngine, ScoutOptions};
+use crate::recommendation::events::IssueKey;
+use crate::recommendation::events::RecommendationEventSource;
+use crate::recommendation::feed_ranker::{
     apply_recommendation_assessments, displayable, sort_by_feed,
 };
-use issue_finder::recommendation::state::RecommendationIssueState;
-use issue_finder::value_scoring::{assess_issue, RankedValueIssue, RiskTag};
+use crate::recommendation::state::RecommendationIssueState;
+use crate::value_scoring::{assess_issue, RankedValueIssue, RiskTag};
+use anyhow::{Context, Result};
+use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
+
+const CORE_QUALITY: &str =
+    include_str!("../../tests/fixtures/recommendation_eval/datasets/core_quality.json");
+const PROFILE_FRONTEND: &str =
+    include_str!("../../tests/fixtures/recommendation_eval/datasets/profile_frontend.json");
+const PROFILE_BACKEND_RUST_GO: &str =
+    include_str!("../../tests/fixtures/recommendation_eval/datasets/profile_backend_rust_go.json");
+const PROFILE_PYTHON_DATA_CLI: &str =
+    include_str!("../../tests/fixtures/recommendation_eval/datasets/profile_python_data_cli.json");
+const PROFILE_AI_AGENT_TOOLS: &str =
+    include_str!("../../tests/fixtures/recommendation_eval/datasets/profile_ai_agent_tools.json");
+const PROFILE_DEVOPS_INFRA: &str =
+    include_str!("../../tests/fixtures/recommendation_eval/datasets/profile_devops_infra.json");
+const SOURCE_TRUST: &str =
+    include_str!("../../tests/fixtures/recommendation_eval/datasets/source_trust.json");
+const FEEDBACK_REPLAY: &str =
+    include_str!("../../tests/fixtures/recommendation_eval/datasets/feedback_replay.json");
+
+const LIVE_PROFILE_NAMES: [&str; 6] = [
+    "default_cli_devtools",
+    "typescript_frontend",
+    "rust_backend_systems",
+    "python_data_cli",
+    "ai_agent_tools",
+    "devops_infra",
+];
 
 #[derive(Debug, Deserialize)]
 pub struct EvaluationDataset {
@@ -265,14 +297,162 @@ pub struct RankedSampleSummary {
     pub source_tier: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveEvaluationReport {
+    pub limit: usize,
+    pub refresh: bool,
+    pub profiles: Vec<LiveProfileReport>,
+    pub summary: LiveEvaluationSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveProfileReport {
+    pub profile: String,
+    pub visible: usize,
+    pub discovery_count: usize,
+    pub filtered_count: usize,
+    pub api_budget: crate::github_budget::GitHubApiBudgetReport,
+    pub candidates: Vec<LiveCandidateSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveCandidateSummary {
+    pub rank: usize,
+    pub key: String,
+    pub title: String,
+    pub url: String,
+    pub profile_fit: i32,
+    pub visibility: String,
+    pub source_tier: Option<String>,
+    pub risk_tags: Vec<String>,
+    pub competition: CompetitionFacts,
+    pub missing_evidence: Vec<String>,
+    pub manual_quality: Option<String>,
+    pub manual_notes: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveEvaluationSummary {
+    pub profiles: usize,
+    pub min_visible: usize,
+    pub max_visible: usize,
+    pub total_visible: usize,
+    pub total_network_requests: usize,
+    pub budget_exhausted_profiles: usize,
+}
+
 struct RankedEvaluationSample<'a> {
     sample: &'a EvaluationSample,
     ranked: RankedValueIssue,
     source_tier: String,
 }
 
+struct LiveEvalHome {
+    paths: IssueFinderPaths,
+}
+
+impl Drop for LiveEvalHome {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.paths.home);
+    }
+}
+
 pub fn load_dataset(raw: &str) -> EvaluationDataset {
     serde_json::from_str(raw).expect("recommendation eval dataset should parse")
+}
+
+pub fn builtin_datasets() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("core_quality", CORE_QUALITY),
+        ("profile_frontend", PROFILE_FRONTEND),
+        ("profile_backend_rust_go", PROFILE_BACKEND_RUST_GO),
+        ("profile_python_data_cli", PROFILE_PYTHON_DATA_CLI),
+        ("profile_ai_agent_tools", PROFILE_AI_AGENT_TOOLS),
+        ("profile_devops_infra", PROFILE_DEVOPS_INFRA),
+        ("source_trust", SOURCE_TRUST),
+        ("feedback_replay", FEEDBACK_REPLAY),
+    ]
+}
+
+pub fn run_offline_eval(output_dir: &Path) -> Result<EvaluationReport> {
+    let report = evaluate_named_datasets(builtin_datasets());
+    write_offline_report_snapshot(&report, output_dir)?;
+    Ok(report)
+}
+
+pub async fn run_live_eval(
+    base_config: &Config,
+    limit: usize,
+    refresh: bool,
+    output_dir: &Path,
+) -> Result<LiveEvaluationReport> {
+    let mut profiles = Vec::new();
+    for profile_name in LIVE_PROFILE_NAMES {
+        let mut config = base_config.clone();
+        config.profile = profile_config(profile_name);
+        let home = isolated_live_home(output_dir, profile_name)?;
+        home.paths.ensure_layout()?;
+        let result = RecommendationEngine::new(&home.paths, &config)
+            .scout(
+                limit,
+                refresh,
+                ScoutOptions {
+                    include_filtered: false,
+                    record_exposure: false,
+                    source: RecommendationEventSource::CliScout,
+                },
+            )
+            .await?;
+        let candidates = result
+            .ranked
+            .iter()
+            .enumerate()
+            .map(|(index, item)| live_candidate_summary(index + 1, item))
+            .collect::<Vec<_>>();
+        profiles.push(LiveProfileReport {
+            profile: profile_name.to_string(),
+            visible: result.ranked.len(),
+            discovery_count: result.discovery_count,
+            filtered_count: result.filtered_count,
+            api_budget: result.api_budget,
+            candidates,
+        });
+    }
+
+    let summary = LiveEvaluationSummary {
+        profiles: profiles.len(),
+        min_visible: profiles
+            .iter()
+            .map(|profile| profile.visible)
+            .min()
+            .unwrap_or(0),
+        max_visible: profiles
+            .iter()
+            .map(|profile| profile.visible)
+            .max()
+            .unwrap_or(0),
+        total_visible: profiles.iter().map(|profile| profile.visible).sum(),
+        total_network_requests: profiles
+            .iter()
+            .map(|profile| profile.api_budget.total_network_requests)
+            .sum(),
+        budget_exhausted_profiles: profiles
+            .iter()
+            .filter(|profile| !profile.api_budget.budget_exhausted.is_empty())
+            .count(),
+    };
+    let report = LiveEvaluationReport {
+        limit,
+        refresh,
+        profiles,
+        summary,
+    };
+    write_live_report_snapshot(&report, output_dir)?;
+    Ok(report)
 }
 
 pub fn evaluate_named_datasets(datasets: Vec<(&str, &str)>) -> EvaluationReport {
@@ -885,6 +1065,243 @@ pub fn profile_coverage(report: &EvaluationReport) -> BTreeMap<String, usize> {
         .iter()
         .map(|dataset| (dataset.profile.clone(), dataset.metrics.samples))
         .collect()
+}
+
+pub fn write_offline_report_snapshot(report: &EvaluationReport, output_dir: &Path) -> Result<()> {
+    fs::create_dir_all(output_dir)?;
+    atomic_write(
+        &output_dir.join("metrics.json"),
+        serde_json::to_vec_pretty(report)?,
+    )?;
+    atomic_write(
+        &output_dir.join("report.md"),
+        offline_markdown_report(report),
+    )?;
+    atomic_write(
+        &output_dir.join("visible.jsonl"),
+        offline_visible_jsonl(report),
+    )?;
+    Ok(())
+}
+
+pub fn write_live_report_snapshot(report: &LiveEvaluationReport, output_dir: &Path) -> Result<()> {
+    fs::create_dir_all(output_dir)?;
+    atomic_write(
+        &output_dir.join("metrics.json"),
+        serde_json::to_vec_pretty(report)?,
+    )?;
+    atomic_write(&output_dir.join("report.md"), live_markdown_report(report))?;
+    atomic_write(
+        &output_dir.join("visible.jsonl"),
+        live_visible_jsonl(report),
+    )?;
+    Ok(())
+}
+
+fn offline_markdown_report(report: &EvaluationReport) -> String {
+    let mut output = String::new();
+    output.push_str("# Recommendation Evaluation\n\n");
+    output.push_str("Generated by `issue-finder eval recommendation --offline` from deterministic offline fixtures. It records ranking pipeline behavior without network access.\n\n");
+    output.push_str("## Overall Metrics\n\n");
+    output.push_str(&format!(
+        "- samples: {}\n- visible: {}\n- precision@5: {:.2}\n- precision@10: {:.2}\n- visible fill rate: {:.2}\n- reject leakage: {}\n- profile mismatch leakage: {}\n- stale high-rank leakage: {}\n- competition leakage: {}\n- dashboard noise leakage: {}\n- ranking inversions: {}\n- feedback cooldown: {}/{}\n- fallback fill rate: {:.2}\n\n",
+        report.overall.samples,
+        report.overall.visible,
+        report.overall.precision_at5,
+        report.overall.precision_at10,
+        report.overall.visible_fill_rate,
+        report.overall.reject_leakage,
+        report.overall.profile_mismatch_leakage,
+        report.overall.stale_high_rank_leakage,
+        report.overall.competition_leakage,
+        report.overall.dashboard_noise_leakage,
+        report.overall.ranking_inversions,
+        report.overall.feedback_cooldown_passes,
+        report.overall.feedback_cooldown_total,
+        report.overall.fallback_fill_rate
+    ));
+    output.push_str("## Dataset Metrics\n\n");
+    output.push_str(
+        "| dataset | profile | samples | visible | p@5 | p@10 | inversions | failures |\n",
+    );
+    output.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    for dataset in &report.datasets {
+        output.push_str(&format!(
+            "| {} | {} | {} | {} | {:.2} | {:.2} | {} | {} |\n",
+            dataset.dataset,
+            dataset.profile,
+            dataset.metrics.samples,
+            dataset.metrics.visible,
+            dataset.metrics.precision_at5,
+            dataset.metrics.precision_at10,
+            dataset.metrics.ranking_inversions,
+            dataset.failures.len()
+        ));
+    }
+    output.push_str("\n## Known Failure Signals\n\n");
+    for dataset in &report.datasets {
+        if dataset.failures.is_empty() {
+            continue;
+        }
+        output.push_str(&format!("### {}\n\n", dataset.dataset));
+        for failure in &dataset.failures {
+            output.push_str(&format!("- `{}`: {}\n", failure.sample_id, failure.reason));
+        }
+        output.push('\n');
+    }
+    finish_markdown(output)
+}
+
+fn offline_visible_jsonl(report: &EvaluationReport) -> String {
+    let mut output = String::new();
+    for dataset in &report.datasets {
+        for item in dataset
+            .ranked
+            .iter()
+            .filter(|item| item.visibility == "visible")
+        {
+            let row = serde_json::json!({
+                "dataset": dataset.dataset,
+                "profile": dataset.profile,
+                "rank": item.rank,
+                "sampleId": item.sample_id,
+                "key": item.key,
+                "title": item.title,
+                "expectedQuality": item.expected_quality,
+                "expectedBehavior": item.expected_behavior,
+                "finalFeedScore": item.final_feed_score,
+                "freshnessBoost": item.freshness_boost,
+                "profileFit": item.profile_fit,
+                "sourceTier": item.source_tier,
+            });
+            output.push_str(&serde_json::to_string(&row).expect("visible row should serialize"));
+            output.push('\n');
+        }
+    }
+    output
+}
+
+fn live_markdown_report(report: &LiveEvaluationReport) -> String {
+    let mut output = String::new();
+    output.push_str("# Live Recommendation Evaluation\n\n");
+    output.push_str("Generated by `issue-finder eval recommendation --live`. Manual review columns are placeholders and must be filled after reading issue body/comments.\n\n");
+    output.push_str("## Summary\n\n");
+    output.push_str(&format!(
+        "- profiles: {}\n- limit: {}\n- refresh: {}\n- visible range: {}-{}\n- total visible: {}\n- total network requests: {}\n- budget exhausted profiles: {}\n\n",
+        report.summary.profiles,
+        report.limit,
+        report.refresh,
+        report.summary.min_visible,
+        report.summary.max_visible,
+        report.summary.total_visible,
+        report.summary.total_network_requests,
+        report.summary.budget_exhausted_profiles
+    ));
+    output.push_str("## Profiles\n\n");
+    output.push_str(
+        "| profile | visible | discovery | filtered | network requests | budget exhausted |\n",
+    );
+    output.push_str("| --- | ---: | ---: | ---: | ---: | ---: |\n");
+    for profile in &report.profiles {
+        output.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} |\n",
+            profile.profile,
+            profile.visible,
+            profile.discovery_count,
+            profile.filtered_count,
+            profile.api_budget.total_network_requests,
+            profile.api_budget.budget_exhausted.len()
+        ));
+    }
+    output.push_str("\n## Manual Review\n\n");
+    for profile in &report.profiles {
+        output.push_str(&format!("### {}\n\n", profile.profile));
+        output.push_str("| rank | issue | profileFit | visibility | competition warnings | manualQuality | manualNotes |\n");
+        output.push_str("| ---: | --- | ---: | --- | --- | --- | --- |\n");
+        for item in &profile.candidates {
+            output.push_str(&format!(
+                "| {} | {} | {} | {} | {} |  |  |\n",
+                item.rank,
+                item.key,
+                item.profile_fit,
+                item.visibility,
+                item.competition.warnings.join("; ")
+            ));
+        }
+        output.push('\n');
+    }
+    finish_markdown(output)
+}
+
+fn finish_markdown(mut output: String) -> String {
+    while output.ends_with("\n\n") {
+        output.pop();
+    }
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+    output
+}
+
+fn live_visible_jsonl(report: &LiveEvaluationReport) -> String {
+    let mut output = String::new();
+    for profile in &report.profiles {
+        for item in &profile.candidates {
+            let row = serde_json::to_string(item).expect("live visible row should serialize");
+            output.push_str(&row);
+            output.push('\n');
+        }
+    }
+    output
+}
+
+fn live_candidate_summary(rank: usize, item: &RankedValueIssue) -> LiveCandidateSummary {
+    LiveCandidateSummary {
+        rank,
+        key: format!("{}#{}", item.issue.repo_full_name, item.issue.number),
+        title: item.issue.title.clone(),
+        url: item.issue.url.clone(),
+        profile_fit: item.value_assessment.profile_fit_score,
+        visibility: item.recommendation.visibility.to_string(),
+        source_tier: source_tier_from_explanation(&item.explanation),
+        risk_tags: item
+            .value_assessment
+            .risk_tags
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        competition: item.enriched_issue.competition.clone(),
+        missing_evidence: item.value_assessment.missing_evidence.clone(),
+        manual_quality: None,
+        manual_notes: String::new(),
+    }
+}
+
+fn source_tier_from_explanation(explanation: &[String]) -> Option<String> {
+    explanation.iter().find_map(|item| {
+        item.split_once("discovery trust `")
+            .and_then(|(_, rest)| rest.split_once('`'))
+            .map(|(tier, _)| tier.to_string())
+    })
+}
+
+fn isolated_live_home(output_dir: &Path, profile_name: &str) -> Result<LiveEvalHome> {
+    let stamp = Utc::now().timestamp_millis();
+    let safe_profile = profile_name.replace('/', "__");
+    let home = std::env::temp_dir().join(format!("issue-finder-eval-{stamp}-{safe_profile}"));
+    fs::create_dir_all(&home)
+        .with_context(|| format!("unable to create live eval home for {profile_name}"))?;
+    fs::create_dir_all(output_dir)?;
+    Ok(LiveEvalHome {
+        paths: IssueFinderPaths {
+            config: home.join("config.toml"),
+            cache_dir: home.join("cache"),
+            workspaces_dir: home.join("workspaces"),
+            inbox_dir: home.join("inbox"),
+            reports_dir: home.join("reports"),
+            home,
+        },
+    })
 }
 
 fn timestamped_samples(prefix: &str, count: usize) -> Vec<TimestampedSample> {

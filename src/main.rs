@@ -152,6 +152,36 @@ async fn main() -> Result<()> {
         Command::Report(args) => {
             println!("{}", workflow::read_report(&paths, args.date)?);
         }
+        Command::Eval(args) => match args.command {
+            issue_finder::cli::EvalCommand::Recommendation(eval_args) => {
+                if !eval_args.offline && !eval_args.live {
+                    anyhow::bail!("choose either --offline or --live");
+                }
+                if eval_args.offline {
+                    let report =
+                        issue_finder::recommendation::eval::run_offline_eval(&eval_args.output)?;
+                    println!(
+                        "Wrote offline recommendation eval to {} ({} samples).",
+                        eval_args.output.display(),
+                        report.overall.samples
+                    );
+                } else {
+                    let config = Config::load(&paths)?;
+                    let report = issue_finder::recommendation::eval::run_live_eval(
+                        &config,
+                        eval_args.limit,
+                        eval_args.refresh,
+                        &eval_args.output,
+                    )
+                    .await?;
+                    println!(
+                        "Wrote live recommendation eval to {} ({} visible candidates).",
+                        eval_args.output.display(),
+                        report.summary.total_visible
+                    );
+                }
+            }
+        },
         Command::Tools(args) => match args.command {
             ToolsCommand::List => {
                 println!("{}", serde_json::to_string(&list_tool_specs())?);
