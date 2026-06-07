@@ -56,6 +56,9 @@ pub struct ScoutArgs {
     /// Print ranked candidates as JSON.
     #[arg(long)]
     pub json: bool,
+    /// Print ranked candidates plus discovery/filter/API budget stats as JSON.
+    #[arg(long)]
+    pub stats_json: bool,
 }
 
 #[derive(Debug, Args)]

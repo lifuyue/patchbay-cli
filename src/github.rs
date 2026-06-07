@@ -14,9 +14,11 @@ use crate::discovery::{
     DiscoveryCandidate, RepoTrustTier, TrustedRepository,
 };
 use crate::errors::IssueFinderError;
+use crate::github_budget::{GitHubApiBudget, GitHubApiBudgetReport, GitHubRequestSource};
 use crate::paths::{atomic_write, IssueFinderPaths};
 
-const SEARCH_CACHE_TTL_MINUTES: i64 = 10;
+const SEARCH_CACHE_TTL_MINUTES: i64 = 180;
+const FALLBACK_DISCOVERY_CACHE_TTL_MINUTES: i64 = 360;
 const TRUSTED_OVERLAY_REPO_REQUEST_LIMIT: usize = 15;
 const PROFILE_TRUSTED_REPO_REQUEST_LIMIT: usize = 20;
 const GFI_REPO_REQUEST_LIMIT: usize = 20;
@@ -198,10 +200,15 @@ pub struct GitHubClient {
     http: reqwest::Client,
     token: String,
     api_base_url: String,
+    budget: GitHubApiBudget,
 }
 
 impl GitHubClient {
     pub fn new(config: &Config) -> Result<Self> {
+        Self::with_budget(config, GitHubApiBudget::from_env())
+    }
+
+    pub fn with_budget(config: &Config, budget: GitHubApiBudget) -> Result<Self> {
         let http = reqwest::Client::builder()
             .user_agent("issue-finder")
             .build()?;
@@ -210,7 +217,29 @@ impl GitHubClient {
             token: config.github.token.clone(),
             api_base_url: std::env::var("ISSUE_FINDER_GITHUB_API_BASE")
                 .unwrap_or_else(|_| "https://api.github.com".to_string()),
+            budget,
         })
+    }
+
+    #[cfg(test)]
+    pub fn with_api_base_and_budget(
+        config: &Config,
+        api_base_url: impl Into<String>,
+        budget: GitHubApiBudget,
+    ) -> Result<Self> {
+        let http = reqwest::Client::builder()
+            .user_agent("issue-finder")
+            .build()?;
+        Ok(Self {
+            http,
+            token: config.github.token.clone(),
+            api_base_url: api_base_url.into(),
+            budget,
+        })
+    }
+
+    pub fn request_stats(&self) -> GitHubApiBudgetReport {
+        self.budget.report()
     }
 
     pub async fn discover_issues(
@@ -233,12 +262,6 @@ impl GitHubClient {
         refresh: bool,
         profile: &ProfileConfig,
     ) -> Result<Vec<DiscoveryCandidate>> {
-        if !refresh {
-            if let Some(cached) = load_cached_candidates(paths)? {
-                return Ok(cached);
-            }
-        }
-
         let mut lanes = primary_trusted_repository_lanes(profile)?
             .into_iter()
             .map(|(repository, trust_tier)| SearchLaneRequest::trusted(repository, trust_tier))
@@ -251,11 +274,10 @@ impl GitHubClient {
                 .map(SearchLaneRequest::global),
         );
 
-        let lane_results = stream::iter(
-            lanes
-                .into_iter()
-                .map(|lane| async move { self.fetch_lane_candidates(lane, profile).await }),
-        )
+        let lane_results = stream::iter(lanes.into_iter().map(|lane| async move {
+            self.fetch_lane_candidates_cached(paths, refresh, lane, profile)
+                .await
+        }))
         .buffer_unordered(DISCOVERY_SEARCH_CONCURRENCY_LIMIT)
         .collect::<Vec<_>>()
         .await;
@@ -263,12 +285,13 @@ impl GitHubClient {
         let candidates = collect_lane_candidates(lane_results)?;
 
         let candidates = merge_candidates(candidates, profile);
-        save_cached_candidates(paths, &candidates)?;
         Ok(candidates)
     }
 
     pub async fn discover_trusted_fallback_candidates(
         &self,
+        paths: &IssueFinderPaths,
+        refresh: bool,
         profile: &ProfileConfig,
     ) -> Result<Vec<DiscoveryCandidate>> {
         let profile_repositories =
@@ -285,20 +308,8 @@ impl GitHubClient {
         let requests = fallback_trusted_repository_requests(&profile_repositories, &repositories);
 
         let lane_results = stream::iter(requests.into_iter().map(|request| async move {
-            let label_id = normalize_label(request.label).replace(' ', "-");
-            let id = format!(
-                "fallback_trusted:{label_id}:{}",
-                request.repository.full_name()
-            );
-            self.list_trusted_repository_fallback_lane(
-                &request.repository,
-                request.label,
-                &id,
-                request.trust_tier,
-                FALLBACK_TRUSTED_REPO_CANDIDATE_LIMIT,
-                profile,
-            )
-            .await
+            self.list_trusted_repository_fallback_lane_cached(paths, refresh, request, profile)
+                .await
         }))
         .buffer_unordered(DISCOVERY_SEARCH_CONCURRENCY_LIMIT)
         .collect::<Vec<_>>()
@@ -314,6 +325,8 @@ impl GitHubClient {
 
     pub async fn discover_global_fallback_candidates(
         &self,
+        paths: &IssueFinderPaths,
+        refresh: bool,
         profile: &ProfileConfig,
     ) -> Result<Vec<DiscoveryCandidate>> {
         let lanes = fallback_global_search_lanes(profile)
@@ -322,28 +335,139 @@ impl GitHubClient {
             .collect::<Vec<_>>();
         let search_spacing = self.fallback_global_search_spacing();
         let mut lane_results = Vec::new();
-        for (index, lane) in lanes.into_iter().enumerate() {
-            if index > 0 && !search_spacing.is_zero() {
-                tokio::time::sleep(search_spacing).await;
-            }
+        for lane in lanes {
+            let requests_before = self.request_stats().total_network_requests;
             let result = self
-                .search_lane(
-                    &lane.query,
-                    FALLBACK_GLOBAL_SEARCH_PER_PAGE,
-                    &lane.id,
-                    RepoTrustTier::Global,
+                .search_lane_cached(SearchLaneCacheRequest {
+                    paths,
+                    refresh,
+                    query: &lane.query,
+                    per_page: FALLBACK_GLOBAL_SEARCH_PER_PAGE,
+                    lane_id: &lane.id,
+                    request_source: GitHubRequestSource::DiscoveryFallbackGlobal,
                     profile,
-                )
+                })
                 .await;
             if result.as_ref().is_err_and(is_rate_limit_error) {
                 break;
             }
+            let made_network_request =
+                self.request_stats().total_network_requests > requests_before;
             lane_results.push(result);
+            if made_network_request && !search_spacing.is_zero() {
+                tokio::time::sleep(search_spacing).await;
+            }
         }
 
         let candidates = collect_fallback_lane_candidates(lane_results);
         let mut candidates = merge_candidates(candidates, profile);
         candidates.truncate(30);
+        Ok(candidates)
+    }
+
+    async fn fetch_lane_candidates_cached(
+        &self,
+        paths: &IssueFinderPaths,
+        refresh: bool,
+        lane: SearchLaneRequest,
+        profile: &ProfileConfig,
+    ) -> Result<Vec<DiscoveryCandidate>> {
+        let source = lane.request_source();
+        let cache_key = lane.cache_key();
+        if !refresh {
+            if let Some(cached) =
+                load_cached_candidates(paths, source, &cache_key, SEARCH_CACHE_TTL_MINUTES)?
+            {
+                self.budget.record_cache_hit(source);
+                return Ok(cached);
+            }
+        }
+
+        let candidates = self.fetch_lane_candidates(lane, profile).await?;
+        save_cached_candidates(paths, source, &cache_key, &candidates)?;
+        Ok(candidates)
+    }
+
+    async fn list_trusted_repository_fallback_lane_cached(
+        &self,
+        paths: &IssueFinderPaths,
+        refresh: bool,
+        request: FallbackTrustedRequest,
+        profile: &ProfileConfig,
+    ) -> Result<Vec<DiscoveryCandidate>> {
+        let label_id = normalize_label(request.label).replace(' ', "-");
+        let id = format!(
+            "fallback_trusted:{label_id}:{}",
+            request.repository.full_name()
+        );
+        if !refresh {
+            if let Some(cached) = load_cached_candidates(
+                paths,
+                GitHubRequestSource::DiscoveryFallbackTrusted,
+                &id,
+                FALLBACK_DISCOVERY_CACHE_TTL_MINUTES,
+            )? {
+                self.budget
+                    .record_cache_hit(GitHubRequestSource::DiscoveryFallbackTrusted);
+                return Ok(cached);
+            }
+        }
+
+        let candidates = self
+            .list_trusted_repository_fallback_lane(
+                &request.repository,
+                request.label,
+                &id,
+                request.trust_tier,
+                FALLBACK_TRUSTED_REPO_CANDIDATE_LIMIT,
+                profile,
+            )
+            .await?;
+        save_cached_candidates(
+            paths,
+            GitHubRequestSource::DiscoveryFallbackTrusted,
+            &id,
+            &candidates,
+        )?;
+        Ok(candidates)
+    }
+
+    async fn search_lane_cached(
+        &self,
+        request: SearchLaneCacheRequest<'_>,
+    ) -> Result<Vec<DiscoveryCandidate>> {
+        let SearchLaneCacheRequest {
+            paths,
+            refresh,
+            query,
+            per_page,
+            lane_id,
+            request_source,
+            profile,
+        } = request;
+        if !refresh {
+            if let Some(cached) = load_cached_candidates(
+                paths,
+                request_source,
+                lane_id,
+                FALLBACK_DISCOVERY_CACHE_TTL_MINUTES,
+            )? {
+                self.budget.record_cache_hit(request_source);
+                return Ok(cached);
+            }
+        }
+
+        let candidates = self
+            .search_lane(
+                query,
+                per_page,
+                lane_id,
+                request_source,
+                RepoTrustTier::Global,
+                profile,
+            )
+            .await?;
+        save_cached_candidates(paths, request_source, lane_id, &candidates)?;
         Ok(candidates)
     }
 
@@ -375,8 +499,15 @@ impl GitHubClient {
                 query,
                 per_page,
             } => {
-                self.search_lane(&query, per_page, &id, RepoTrustTier::Global, profile)
-                    .await
+                self.search_lane(
+                    &query,
+                    per_page,
+                    &id,
+                    GitHubRequestSource::DiscoveryGlobal,
+                    RepoTrustTier::Global,
+                    profile,
+                )
+                .await
             }
         }
     }
@@ -395,6 +526,7 @@ impl GitHubClient {
             "/repos/{}/{}/issues",
             repository.owner, repository.name
         ));
+        self.record_request(GitHubRequestSource::DiscoveryFallbackTrusted, lane_id)?;
         let response = self
             .authorized(self.http.get(url))
             .query(&[
@@ -483,6 +615,10 @@ impl GitHubClient {
                 "/repos/{}/{}/issues",
                 repository.owner, repository.name
             ));
+            self.record_request(
+                trusted_repo_request_source(trust_tier),
+                format!("{lane_id}:{label}"),
+            )?;
             let response = self
                 .authorized(self.http.get(url))
                 .query(&[
@@ -550,11 +686,13 @@ impl GitHubClient {
         query: &str,
         per_page: usize,
         lane_id: &str,
+        request_source: GitHubRequestSource,
         trust_tier: RepoTrustTier,
         profile: &ProfileConfig,
     ) -> Result<Vec<DiscoveryCandidate>> {
         let per_page = per_page.to_string();
         let url = self.api_url("/search/issues");
+        self.record_request(request_source, lane_id)?;
         let response = self
             .authorized(self.http.get(url))
             .query(&[
@@ -631,6 +769,7 @@ impl GitHubClient {
             issue_ref.repo,
             issue_ref.number
         );
+        self.record_request(GitHubRequestSource::DirectIssue, issue_ref.repo_full_name())?;
         let response = self.authorized(self.http.get(url)).send().await?;
         let response = require_success(response).await?;
         let issue = response.json::<IssueResponse>().await?;
@@ -677,6 +816,7 @@ impl GitHubClient {
             anyhow::bail!("GitHub token is missing");
         }
 
+        self.record_request(GitHubRequestSource::ValidateToken, "/user")?;
         let response = self
             .authorized(self.http.get(self.api_url("/user")))
             .send()
@@ -710,6 +850,7 @@ impl GitHubClient {
         }
 
         let url = self.api_url(&format!("/repos/{owner}/{repo}"));
+        self.record_request(GitHubRequestSource::DirectIssue, format!("{owner}/{repo}"))?;
         let response = self.authorized(self.http.get(url)).send().await?;
         let response = require_success(response).await?;
         let repo = response.json::<RepoResponse>().await?;
@@ -737,6 +878,12 @@ impl GitHubClient {
         } else {
             std::time::Duration::ZERO
         }
+    }
+
+    fn record_request(&self, source: GitHubRequestSource, detail: impl AsRef<str>) -> Result<()> {
+        self.budget
+            .record_network_request(source, detail)
+            .map_err(Into::into)
     }
 }
 
@@ -840,12 +987,35 @@ impl SearchLaneRequest {
             per_page: GLOBAL_SEARCH_PER_PAGE,
         }
     }
+
+    fn cache_key(&self) -> String {
+        match self {
+            Self::TrustedRepo { id, .. } | Self::Global { id, .. } => id.clone(),
+        }
+    }
+
+    fn request_source(&self) -> GitHubRequestSource {
+        match self {
+            Self::TrustedRepo { trust_tier, .. } => trusted_repo_request_source(*trust_tier),
+            Self::Global { .. } => GitHubRequestSource::DiscoveryGlobal,
+        }
+    }
 }
 
 #[derive(Debug)]
 struct GlobalSearchLane {
     id: String,
     query: String,
+}
+
+struct SearchLaneCacheRequest<'a> {
+    paths: &'a IssueFinderPaths,
+    refresh: bool,
+    query: &'a str,
+    per_page: usize,
+    lane_id: &'a str,
+    request_source: GitHubRequestSource,
+    profile: &'a ProfileConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1116,8 +1286,13 @@ fn is_rate_limit_error(error: &anyhow::Error) -> bool {
         .is_some_and(|error| matches!(error, IssueFinderError::GitHubRateLimited))
 }
 
-fn load_cached_candidates(paths: &IssueFinderPaths) -> Result<Option<Vec<DiscoveryCandidate>>> {
-    let cache_path = paths.issue_cache_path();
+fn load_cached_candidates(
+    paths: &IssueFinderPaths,
+    source: GitHubRequestSource,
+    key: &str,
+    ttl_minutes: i64,
+) -> Result<Option<Vec<DiscoveryCandidate>>> {
+    let cache_path = paths.discovery_cache_path(source.as_str(), key);
     if !cache_path.exists() {
         return Ok(None);
     }
@@ -1127,7 +1302,7 @@ fn load_cached_candidates(paths: &IssueFinderPaths) -> Result<Option<Vec<Discove
     let Ok(payload) = serde_json::from_str::<DiscoveryCachePayload>(&raw) else {
         return Ok(None);
     };
-    if Utc::now() - payload.fetched_at > Duration::minutes(SEARCH_CACHE_TTL_MINUTES) {
+    if Utc::now() - payload.fetched_at > Duration::minutes(ttl_minutes) {
         return Ok(None);
     }
 
@@ -1136,6 +1311,8 @@ fn load_cached_candidates(paths: &IssueFinderPaths) -> Result<Option<Vec<Discove
 
 fn save_cached_candidates(
     paths: &IssueFinderPaths,
+    source: GitHubRequestSource,
+    key: &str,
     candidates: &[DiscoveryCandidate],
 ) -> Result<()> {
     let payload = DiscoveryCachePayload {
@@ -1143,10 +1320,19 @@ fn save_cached_candidates(
         candidates: candidates.to_vec(),
     };
     atomic_write(
-        paths.issue_cache_path().as_path(),
+        paths.discovery_cache_path(source.as_str(), key).as_path(),
         serde_json::to_vec_pretty(&payload)?,
     )?;
     Ok(())
+}
+
+fn trusted_repo_request_source(trust_tier: RepoTrustTier) -> GitHubRequestSource {
+    match trust_tier {
+        RepoTrustTier::OverlayTrusted => GitHubRequestSource::DiscoveryOverlay,
+        RepoTrustTier::ProfileTrusted => GitHubRequestSource::DiscoveryProfileTrusted,
+        RepoTrustTier::GfiTrusted => GitHubRequestSource::DiscoveryGfiTrusted,
+        RepoTrustTier::Global => GitHubRequestSource::DiscoveryGlobal,
+    }
 }
 
 async fn require_success(response: reqwest::Response) -> Result<reqwest::Response> {
@@ -1249,16 +1435,21 @@ fn normalize_label(label: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
+    use chrono::{Duration, Utc};
+    use tempfile::tempdir;
 
     use super::{
         build_search_query, collect_lane_candidates, fallback_global_search_lanes,
-        fallback_trusted_repository_requests, has_beginner_label, primary_trusted_repository_lanes,
-        FallbackTrustedRequest, GitHubIssue, GitHubLabel, IssueRef,
+        fallback_trusted_repository_requests, has_beginner_label, load_cached_candidates,
+        primary_trusted_repository_lanes, DiscoveryCachePayload, FallbackTrustedRequest,
+        GitHubIssue, GitHubLabel, IssueRef, FALLBACK_DISCOVERY_CACHE_TTL_MINUTES,
+        SEARCH_CACHE_TTL_MINUTES,
     };
     use crate::config::ProfileConfig;
     use crate::discovery::{DiscoveryCandidate, RepoTrustTier, TrustedRepository};
     use crate::errors::IssueFinderError;
+    use crate::github_budget::GitHubRequestSource;
+    use crate::paths::{atomic_write, IssueFinderPaths};
 
     #[test]
     fn parses_short_issue_reference() {
@@ -1429,6 +1620,53 @@ mod tests {
             error.downcast_ref::<IssueFinderError>(),
             Some(IssueFinderError::GitHubRateLimited)
         ));
+    }
+
+    #[test]
+    fn fallback_discovery_cache_has_independent_ttl() {
+        let dir = tempdir().unwrap();
+        let paths = IssueFinderPaths {
+            home: dir.path().to_path_buf(),
+            config: dir.path().join("config.toml"),
+            cache_dir: dir.path().join("cache"),
+            workspaces_dir: dir.path().join("workspaces"),
+            inbox_dir: dir.path().join("inbox"),
+            reports_dir: dir.path().join("reports"),
+        };
+        let payload = DiscoveryCachePayload {
+            fetched_at: Utc::now() - Duration::minutes(240),
+            candidates: vec![discovery_candidate()],
+        };
+        let key = "same-lane";
+
+        atomic_write(
+            &paths.discovery_cache_path(GitHubRequestSource::DiscoveryGlobal.as_str(), key),
+            serde_json::to_vec_pretty(&payload).unwrap(),
+        )
+        .unwrap();
+        atomic_write(
+            &paths.discovery_cache_path(GitHubRequestSource::DiscoveryFallbackGlobal.as_str(), key),
+            serde_json::to_vec_pretty(&payload).unwrap(),
+        )
+        .unwrap();
+
+        let primary = load_cached_candidates(
+            &paths,
+            GitHubRequestSource::DiscoveryGlobal,
+            key,
+            SEARCH_CACHE_TTL_MINUTES,
+        )
+        .unwrap();
+        let fallback = load_cached_candidates(
+            &paths,
+            GitHubRequestSource::DiscoveryFallbackGlobal,
+            key,
+            FALLBACK_DISCOVERY_CACHE_TTL_MINUTES,
+        )
+        .unwrap();
+
+        assert!(primary.is_none());
+        assert_eq!(fallback.unwrap().len(), 1);
     }
 
     fn repository(owner: &str, name: &str) -> TrustedRepository {

@@ -1,10 +1,15 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use chrono::{DateTime, Duration, Utc};
 use futures::stream::{self, StreamExt};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fs;
 
 use crate::config::Config;
+use crate::config::ProfileConfig;
 use crate::discovery::{select_enrichment_candidates, DiscoveryCandidate};
 use crate::github::{GitHubClient, GitHubIssue};
+use crate::github_budget::{GitHubApiBudget, GitHubApiBudgetReport, GitHubRequestSource};
 use crate::github_enrichment::{competition_timeline_missing, GitHubEnrichmentClient};
 use crate::paths::IssueFinderPaths;
 use crate::value_scoring::{assess_issue, RankedValueIssue};
@@ -25,6 +30,7 @@ const POST_COMPLETION_TRUSTED_REFILL_LIMIT: usize = 32;
 const POST_COMPLETION_GLOBAL_REFILL_LIMIT: usize = 32;
 const PRIMARY_RESULTS_PER_REPO_LIMIT: usize = 2;
 const COMPETITION_COMPLETED_RESULTS_PER_REPO_LIMIT: usize = 4;
+const SCOUT_RESULT_CACHE_TTL_MINUTES: i64 = 360;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ScoutOptions {
@@ -43,11 +49,20 @@ impl ScoutOptions {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ScoutResult {
     pub ranked: Vec<RankedValueIssue>,
     pub discovery_count: usize,
     pub filtered_count: usize,
+    pub api_budget: GitHubApiBudgetReport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CachedScoutResult {
+    fetched_at: DateTime<Utc>,
+    ranked: Vec<RankedValueIssue>,
+    discovery_count: usize,
+    filtered_count: usize,
 }
 
 struct AdditionalRankingRequest<'a> {
@@ -78,8 +93,23 @@ impl<'a> RecommendationEngine<'a> {
         options: ScoutOptions,
     ) -> Result<ScoutResult> {
         self.paths.ensure_layout()?;
-        let github = GitHubClient::new(self.config)?;
-        let enrichment = GitHubEnrichmentClient::new(self.config)?;
+        let api_budget = GitHubApiBudget::from_env();
+        let scout_cache_key =
+            scout_result_cache_key(&self.config.profile, limit, options.include_filtered);
+        if !refresh && !options.record_exposure {
+            if let Some(cached) = load_cached_scout_result(self.paths, &scout_cache_key)? {
+                api_budget.record_cache_hit(GitHubRequestSource::ScoutResult);
+                return Ok(ScoutResult {
+                    ranked: cached.ranked,
+                    discovery_count: cached.discovery_count,
+                    filtered_count: cached.filtered_count,
+                    api_budget: api_budget.report(),
+                });
+            }
+        }
+
+        let github = GitHubClient::with_budget(self.config, api_budget.clone())?;
+        let enrichment = GitHubEnrichmentClient::with_budget(self.config, api_budget.clone())?;
         let candidates = github
             .discover_candidates(self.paths, refresh, &self.config.profile)
             .await?;
@@ -96,7 +126,7 @@ impl<'a> RecommendationEngine<'a> {
             let trusted_budget =
                 TRUSTED_FALLBACK_ENRICHMENT_CANDIDATE_LIMIT.min(fallback_enrichment_budget);
             let fallback = github
-                .discover_trusted_fallback_candidates(&self.config.profile)
+                .discover_trusted_fallback_candidates(self.paths, refresh, &self.config.profile)
                 .await?;
             let consumed = self
                 .rank_additional_candidates(AdditionalRankingRequest {
@@ -114,7 +144,7 @@ impl<'a> RecommendationEngine<'a> {
 
             if display_count(&ranked, limit, false) < hard_pass && fallback_enrichment_budget > 0 {
                 let fallback = github
-                    .discover_global_fallback_candidates(&self.config.profile)
+                    .discover_global_fallback_candidates(self.paths, refresh, &self.config.profile)
                     .await?;
                 self.rank_additional_candidates(AdditionalRankingRequest {
                     enrichment: &enrichment,
@@ -139,7 +169,7 @@ impl<'a> RecommendationEngine<'a> {
 
         if competition_limited_display_count(&ranked, limit, false) < hard_pass {
             let fallback = github
-                .discover_trusted_fallback_candidates(&self.config.profile)
+                .discover_trusted_fallback_candidates(self.paths, refresh, &self.config.profile)
                 .await?;
             self.rank_additional_candidates(AdditionalRankingRequest {
                 enrichment: &enrichment,
@@ -165,7 +195,7 @@ impl<'a> RecommendationEngine<'a> {
 
             if competition_limited_display_count(&ranked, limit, false) < hard_pass {
                 let fallback = github
-                    .discover_global_fallback_candidates(&self.config.profile)
+                    .discover_global_fallback_candidates(self.paths, refresh, &self.config.profile)
                     .await?;
                 self.rank_additional_candidates(AdditionalRankingRequest {
                     enrichment: &enrichment,
@@ -204,12 +234,24 @@ impl<'a> RecommendationEngine<'a> {
 
         if options.record_exposure {
             self.record_exposure(&visible, options.source)?;
+        } else {
+            save_cached_scout_result(
+                self.paths,
+                &scout_cache_key,
+                &CachedScoutResult {
+                    fetched_at: Utc::now(),
+                    ranked: visible.clone(),
+                    discovery_count,
+                    filtered_count,
+                },
+            )?;
         }
 
         Ok(ScoutResult {
             ranked: visible,
             discovery_count,
             filtered_count,
+            api_budget: api_budget.report(),
         })
     }
 
@@ -572,6 +614,45 @@ fn competition_limited_display_count(
         COMPETITION_COMPLETED_RESULTS_PER_REPO_LIMIT,
     )
     .len()
+}
+
+fn load_cached_scout_result(
+    paths: &IssueFinderPaths,
+    key: &str,
+) -> Result<Option<CachedScoutResult>> {
+    let path = paths.scout_result_cache_path(key);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw =
+        fs::read_to_string(&path).with_context(|| format!("unable to read {}", path.display()))?;
+    let Ok(payload) = serde_json::from_str::<CachedScoutResult>(&raw) else {
+        return Ok(None);
+    };
+    if Utc::now() - payload.fetched_at > Duration::minutes(SCOUT_RESULT_CACHE_TTL_MINUTES) {
+        return Ok(None);
+    }
+    Ok(Some(payload))
+}
+
+fn save_cached_scout_result(
+    paths: &IssueFinderPaths,
+    key: &str,
+    result: &CachedScoutResult,
+) -> Result<()> {
+    crate::paths::atomic_write(
+        &paths.scout_result_cache_path(key),
+        serde_json::to_vec_pretty(result)?,
+    )
+}
+
+fn scout_result_cache_key(profile: &ProfileConfig, limit: usize, include_filtered: bool) -> String {
+    format!(
+        "limit-{limit}__filtered-{include_filtered}__tech-{}__keywords-{}",
+        profile.tech_stack.join("+"),
+        profile.keywords.join("+")
+    )
 }
 
 pub fn select_display_candidates(

@@ -4,14 +4,17 @@ use std::time::Duration as StdDuration;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use reqwest::StatusCode;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::competition::{assess_competition, CompetitionFacts, TimelineIssueReference};
 use crate::config::Config;
 use crate::github::GitHubIssue;
+use crate::github_budget::{GitHubApiBudget, GitHubApiBudgetReport, GitHubRequestSource};
 use crate::paths::{atomic_write, IssueFinderPaths};
 
-const ENRICHMENT_CACHE_TTL_MINUTES: i64 = 45;
+const ENRICHMENT_CACHE_TTL_MINUTES: i64 = 360;
+const COMPETITION_COMPLETION_CACHE_TTL_MINUTES: i64 = 360;
 const ENRICHMENT_HTTP_TIMEOUT: StdDuration = StdDuration::from_secs(10);
 const RECENT_STARGAZER_SAMPLE_LIMIT: usize = 100;
 const NEWEST_FORK_SAMPLE_LIMIT: usize = 100;
@@ -121,7 +124,7 @@ struct RepoApiResponse {
     language: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct IssueApiResponse {
     comments: Option<u64>,
     author_association: Option<String>,
@@ -136,7 +139,7 @@ struct CommentApiResponse {
     user: Option<UserApiResponse>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct UserApiResponse {
     login: Option<String>,
 }
@@ -175,22 +178,52 @@ struct TimelineIssueApiResponse {
     pull_request: Option<serde_json::Value>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct SourceCachePayload<T> {
+    fetched_at: DateTime<Utc>,
+    value: T,
+}
+
+struct CommentFetchRequest<'a> {
+    paths: &'a IssueFinderPaths,
+    owner: &'a str,
+    repo: &'a str,
+    number: u64,
+    comments_count: u64,
+    request_source: GitHubRequestSource,
+    refresh: bool,
+}
+
 pub struct GitHubEnrichmentClient {
     http: reqwest::Client,
     token: String,
     api_base_url: String,
+    budget: GitHubApiBudget,
 }
 
 impl GitHubEnrichmentClient {
     pub fn new(config: &Config) -> Result<Self> {
-        Self::with_api_base(
+        Self::with_budget(config, GitHubApiBudget::from_env())
+    }
+
+    pub fn with_budget(config: &Config, budget: GitHubApiBudget) -> Result<Self> {
+        Self::with_api_base_and_budget(
             config,
             std::env::var("ISSUE_FINDER_GITHUB_API_BASE")
                 .unwrap_or_else(|_| "https://api.github.com".to_string()),
+            budget,
         )
     }
 
     pub fn with_api_base(config: &Config, api_base_url: impl Into<String>) -> Result<Self> {
+        Self::with_api_base_and_budget(config, api_base_url, GitHubApiBudget::from_env())
+    }
+
+    pub fn with_api_base_and_budget(
+        config: &Config,
+        api_base_url: impl Into<String>,
+        budget: GitHubApiBudget,
+    ) -> Result<Self> {
         Ok(Self {
             http: reqwest::Client::builder()
                 .user_agent("issue-finder")
@@ -198,7 +231,12 @@ impl GitHubEnrichmentClient {
                 .build()?,
             token: config.github.token.clone(),
             api_base_url: api_base_url.into(),
+            budget,
         })
+    }
+
+    pub fn request_stats(&self) -> GitHubApiBudgetReport {
+        self.budget.report()
     }
 
     pub async fn enrich_issue(
@@ -234,14 +272,17 @@ impl GitHubEnrichmentClient {
             return enriched;
         };
 
-        match self.fetch_repo(&owner, &repo).await {
+        match self.fetch_repo_cached(paths, &owner, &repo, refresh).await {
             Ok(repo_facts) => enriched.repository = repo_facts,
             Err(error) => enriched
                 .warnings
                 .push(format!("Repository metadata enrichment failed: {error}")),
         }
 
-        match self.fetch_issue_details(&owner, &repo, issue.number).await {
+        match self
+            .fetch_issue_details_cached(paths, &owner, &repo, issue.number, refresh)
+            .await
+        {
             Ok(details) => {
                 enriched.issue.comments_count = details.comments.unwrap_or(0);
                 enriched.issue.author_association = details
@@ -256,7 +297,15 @@ impl GitHubEnrichmentClient {
 
         let mut competition_warnings = Vec::new();
         match self
-            .fetch_comments(&owner, &repo, issue.number, enriched.issue.comments_count)
+            .fetch_comments_cached(CommentFetchRequest {
+                paths,
+                owner: &owner,
+                repo: &repo,
+                number: issue.number,
+                comments_count: enriched.issue.comments_count,
+                request_source: GitHubRequestSource::EnrichmentComments,
+                refresh,
+            })
             .await
         {
             Ok(comments) => {
@@ -291,7 +340,17 @@ impl GitHubEnrichmentClient {
 
         let competition_texts = competition_texts(&enriched);
         if include_competition_timeline {
-            match self.fetch_timeline_refs(&owner, &repo, issue.number).await {
+            match self
+                .fetch_timeline_refs_cached(
+                    paths,
+                    &owner,
+                    &repo,
+                    issue.number,
+                    GitHubRequestSource::EnrichmentTimeline,
+                    refresh,
+                )
+                .await
+            {
                 Ok(timeline_refs) => {
                     enriched.competition = assess_competition(
                         &timeline_refs,
@@ -313,7 +372,13 @@ impl GitHubEnrichmentClient {
         }
 
         match self
-            .fetch_recent_stargazers(&owner, &repo, enriched.repository.stars)
+            .fetch_recent_stargazers_cached(
+                paths,
+                &owner,
+                &repo,
+                enriched.repository.stars,
+                refresh,
+            )
             .await
         {
             Ok(samples) => enriched.growth.recent_stargazer_sample = samples,
@@ -322,7 +387,10 @@ impl GitHubEnrichmentClient {
                 .push(format!("Recent stargazer sample failed: {error}")),
         }
 
-        match self.fetch_newest_forks(&owner, &repo).await {
+        match self
+            .fetch_newest_forks_cached(paths, &owner, &repo, refresh)
+            .await
+        {
             Ok(samples) => enriched.growth.newest_fork_sample = samples,
             Err(error) => enriched
                 .warnings
@@ -367,7 +435,15 @@ impl GitHubEnrichmentClient {
             || (enriched.issue.comments_count > 0 && enriched.comments.is_empty())
         {
             match self
-                .fetch_comments(&owner, &repo, issue.number, enriched.issue.comments_count)
+                .fetch_comments_cached(CommentFetchRequest {
+                    paths,
+                    owner: &owner,
+                    repo: &repo,
+                    number: issue.number,
+                    comments_count: enriched.issue.comments_count,
+                    request_source: GitHubRequestSource::CompetitionCompletionComments,
+                    refresh,
+                })
                 .await
             {
                 Ok(comments) => {
@@ -402,7 +478,17 @@ impl GitHubEnrichmentClient {
         }
 
         let competition_texts = competition_texts(&enriched);
-        match self.fetch_timeline_refs(&owner, &repo, issue.number).await {
+        match self
+            .fetch_timeline_refs_cached(
+                paths,
+                &owner,
+                &repo,
+                issue.number,
+                GitHubRequestSource::CompetitionCompletionTimeline,
+                refresh,
+            )
+            .await
+        {
             Ok(timeline_refs) => {
                 enriched.competition =
                     assess_competition(&timeline_refs, &competition_texts, competition_warnings);
@@ -419,7 +505,167 @@ impl GitHubEnrichmentClient {
         enriched
     }
 
+    async fn fetch_repo_cached(
+        &self,
+        paths: &IssueFinderPaths,
+        owner: &str,
+        repo: &str,
+        refresh: bool,
+    ) -> Result<EnrichedRepositoryFacts> {
+        let key = repo_cache_key(owner, repo);
+        let path = paths.enrichment_source_cache_path(
+            GitHubRequestSource::EnrichmentRepoMetadata.as_str(),
+            &key,
+        );
+        if !refresh {
+            if let Some(cached) = load_source_cache(&path, ENRICHMENT_CACHE_TTL_MINUTES)? {
+                self.budget
+                    .record_cache_hit(GitHubRequestSource::EnrichmentRepoMetadata);
+                return Ok(cached);
+            }
+        }
+
+        let value = self.fetch_repo(owner, repo).await?;
+        save_source_cache(&path, &value)?;
+        Ok(value)
+    }
+
+    async fn fetch_issue_details_cached(
+        &self,
+        paths: &IssueFinderPaths,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        refresh: bool,
+    ) -> Result<IssueApiResponse> {
+        let key = issue_cache_key(owner, repo, number);
+        let path = paths.enrichment_source_cache_path(
+            GitHubRequestSource::EnrichmentIssueDetails.as_str(),
+            &key,
+        );
+        if !refresh {
+            if let Some(cached) = load_source_cache(&path, ENRICHMENT_CACHE_TTL_MINUTES)? {
+                self.budget
+                    .record_cache_hit(GitHubRequestSource::EnrichmentIssueDetails);
+                return Ok(cached);
+            }
+        }
+
+        let value = self.fetch_issue_details(owner, repo, number).await?;
+        save_source_cache(&path, &value)?;
+        Ok(value)
+    }
+
+    async fn fetch_comments_cached(
+        &self,
+        request: CommentFetchRequest<'_>,
+    ) -> Result<Vec<EnrichedComment>> {
+        let CommentFetchRequest {
+            paths,
+            owner,
+            repo,
+            number,
+            comments_count,
+            request_source,
+            refresh,
+        } = request;
+        let key = issue_cache_key(owner, repo, number);
+        let path = paths.enrichment_source_cache_path(request_source.as_str(), &key);
+        if !refresh {
+            if let Some(cached) = load_source_cache(&path, ENRICHMENT_CACHE_TTL_MINUTES)? {
+                self.budget.record_cache_hit(request_source);
+                return Ok(cached);
+            }
+        }
+
+        let value = self
+            .fetch_comments(owner, repo, number, comments_count, request_source)
+            .await?;
+        save_source_cache(&path, &value)?;
+        Ok(value)
+    }
+
+    async fn fetch_timeline_refs_cached(
+        &self,
+        paths: &IssueFinderPaths,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        request_source: GitHubRequestSource,
+        refresh: bool,
+    ) -> Result<Vec<TimelineIssueReference>> {
+        let key = issue_cache_key(owner, repo, number);
+        let ttl = match request_source {
+            GitHubRequestSource::CompetitionCompletionTimeline => {
+                COMPETITION_COMPLETION_CACHE_TTL_MINUTES
+            }
+            _ => ENRICHMENT_CACHE_TTL_MINUTES,
+        };
+        let path = paths.enrichment_source_cache_path(request_source.as_str(), &key);
+        if !refresh {
+            if let Some(cached) = load_source_cache(&path, ttl)? {
+                self.budget.record_cache_hit(request_source);
+                return Ok(cached);
+            }
+        }
+
+        let value = self
+            .fetch_timeline_refs(owner, repo, number, request_source)
+            .await?;
+        save_source_cache(&path, &value)?;
+        Ok(value)
+    }
+
+    async fn fetch_recent_stargazers_cached(
+        &self,
+        paths: &IssueFinderPaths,
+        owner: &str,
+        repo: &str,
+        stars: u64,
+        refresh: bool,
+    ) -> Result<Vec<TimestampedSample>> {
+        let key = repo_cache_key(owner, repo);
+        let path = paths.enrichment_source_cache_path("enrichment_growth_stargazers", &key);
+        if !refresh {
+            if let Some(cached) = load_source_cache(&path, ENRICHMENT_CACHE_TTL_MINUTES)? {
+                self.budget
+                    .record_cache_hit(GitHubRequestSource::EnrichmentGrowth);
+                return Ok(cached);
+            }
+        }
+
+        let value = self.fetch_recent_stargazers(owner, repo, stars).await?;
+        save_source_cache(&path, &value)?;
+        Ok(value)
+    }
+
+    async fn fetch_newest_forks_cached(
+        &self,
+        paths: &IssueFinderPaths,
+        owner: &str,
+        repo: &str,
+        refresh: bool,
+    ) -> Result<Vec<TimestampedSample>> {
+        let key = repo_cache_key(owner, repo);
+        let path = paths.enrichment_source_cache_path("enrichment_growth_forks", &key);
+        if !refresh {
+            if let Some(cached) = load_source_cache(&path, ENRICHMENT_CACHE_TTL_MINUTES)? {
+                self.budget
+                    .record_cache_hit(GitHubRequestSource::EnrichmentGrowth);
+                return Ok(cached);
+            }
+        }
+
+        let value = self.fetch_newest_forks(owner, repo).await?;
+        save_source_cache(&path, &value)?;
+        Ok(value)
+    }
+
     async fn fetch_repo(&self, owner: &str, repo: &str) -> Result<EnrichedRepositoryFacts> {
+        self.record_request(
+            GitHubRequestSource::EnrichmentRepoMetadata,
+            format!("{owner}/{repo}"),
+        )?;
         let response = self
             .authorized(
                 self.http
@@ -455,6 +701,10 @@ impl GitHubEnrichmentClient {
         repo: &str,
         number: u64,
     ) -> Result<IssueApiResponse> {
+        self.record_request(
+            GitHubRequestSource::EnrichmentIssueDetails,
+            format!("{owner}/{repo}#{number}"),
+        )?;
         let response = self
             .authorized(
                 self.http
@@ -475,10 +725,14 @@ impl GitHubEnrichmentClient {
         repo: &str,
         number: u64,
         comments_count: u64,
+        request_source: GitHubRequestSource,
     ) -> Result<Vec<EnrichedComment>> {
         let mut comments = Vec::new();
         for page in trailing_sample_pages(comments_count, ISSUE_COMMENT_LIMIT) {
-            comments.extend(self.fetch_comments_page(owner, repo, number, page).await?);
+            comments.extend(
+                self.fetch_comments_page(owner, repo, number, page, request_source)
+                    .await?,
+            );
         }
         let comments = tail_limited(comments, ISSUE_COMMENT_LIMIT);
         Ok(comments
@@ -502,7 +756,12 @@ impl GitHubEnrichmentClient {
         repo: &str,
         number: u64,
         page: u64,
+        request_source: GitHubRequestSource,
     ) -> Result<Vec<CommentApiResponse>> {
+        self.record_request(
+            request_source,
+            format!("{owner}/{repo}#{number}:comments:{page}"),
+        )?;
         let response = self
             .authorized(
                 self.http
@@ -556,6 +815,10 @@ impl GitHubEnrichmentClient {
         repo: &str,
         page: u64,
     ) -> Result<Vec<StargazerApiResponse>> {
+        self.record_request(
+            GitHubRequestSource::EnrichmentGrowth,
+            format!("{owner}/{repo}:stargazers:{page}"),
+        )?;
         let response = self
             .authorized(
                 self.http
@@ -576,6 +839,10 @@ impl GitHubEnrichmentClient {
     }
 
     async fn fetch_newest_forks(&self, owner: &str, repo: &str) -> Result<Vec<TimestampedSample>> {
+        self.record_request(
+            GitHubRequestSource::EnrichmentGrowth,
+            format!("{owner}/{repo}:forks"),
+        )?;
         let response = self
             .authorized(
                 self.http
@@ -607,7 +874,9 @@ impl GitHubEnrichmentClient {
         owner: &str,
         repo: &str,
         number: u64,
+        request_source: GitHubRequestSource,
     ) -> Result<Vec<TimelineIssueReference>> {
+        self.record_request(request_source, format!("{owner}/{repo}#{number}:timeline"))?;
         let response = self
             .authorized(
                 self.http
@@ -655,6 +924,12 @@ impl GitHubEnrichmentClient {
             self.api_base_url.trim_end_matches('/'),
             path.trim_start_matches('/')
         )
+    }
+
+    fn record_request(&self, source: GitHubRequestSource, detail: impl AsRef<str>) -> Result<()> {
+        self.budget
+            .record_network_request(source, detail)
+            .map_err(Into::into)
     }
 }
 
@@ -846,6 +1121,40 @@ fn save_cached_enrichment(
         &paths.enrichment_cache_path(&issue.repo_full_name, issue.number),
         serde_json::to_vec_pretty(enriched)?,
     )
+}
+
+fn load_source_cache<T: DeserializeOwned>(
+    path: &std::path::Path,
+    ttl_minutes: i64,
+) -> Result<Option<T>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("unable to read {}", path.display()))?;
+    let Ok(payload) = serde_json::from_str::<SourceCachePayload<T>>(&raw) else {
+        return Ok(None);
+    };
+    if Utc::now() - payload.fetched_at > Duration::minutes(ttl_minutes) {
+        return Ok(None);
+    }
+    Ok(Some(payload.value))
+}
+
+fn save_source_cache<T: Serialize>(path: &std::path::Path, value: &T) -> Result<()> {
+    let payload = SourceCachePayload {
+        fetched_at: Utc::now(),
+        value,
+    };
+    atomic_write(path, serde_json::to_vec_pretty(&payload)?)
+}
+
+fn repo_cache_key(owner: &str, repo: &str) -> String {
+    format!("{owner}/{repo}")
+}
+
+fn issue_cache_key(owner: &str, repo: &str, number: u64) -> String {
+    format!("{owner}/{repo}#{number}")
 }
 
 async fn require_success(response: reqwest::Response) -> Result<reqwest::Response> {

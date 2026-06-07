@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
         }
         Command::Scout(args) => {
             let config = Config::load(&paths)?;
-            let ranked = workflow::scout_with_options(
+            let result = workflow::scout_with_options(
                 &paths,
                 &config,
                 args.limit,
@@ -50,12 +50,13 @@ async fn main() -> Result<()> {
                     source: RecommendationEventSource::CliScout,
                 },
             )
-            .await?
-            .ranked;
-            if args.json {
-                println!("{}", serde_json::to_string_pretty(&ranked)?);
+            .await?;
+            if args.stats_json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else if args.json {
+                println!("{}", serde_json::to_string_pretty(&result.ranked)?);
             } else {
-                println!("{}", workflow::render_ranked(&ranked));
+                println!("{}", workflow::render_ranked(&result.ranked));
             }
         }
         Command::Assess(args) => {

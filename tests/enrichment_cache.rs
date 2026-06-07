@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use issue_finder::config::Config;
 use issue_finder::github::GitHubIssue;
+use issue_finder::github_budget::GitHubApiBudget;
 use issue_finder::github_enrichment::{competition_timeline_missing, GitHubEnrichmentClient};
 use issue_finder::paths::IssueFinderPaths;
 use issue_finder::value_scoring::assess_issue;
@@ -34,12 +35,50 @@ async fn enrichment_cache_is_used_unless_refresh_is_passed() {
     assert_eq!(cached.repository.forks, 42);
     assert!(cached.warnings.is_empty());
 
+    let budget = GitHubApiBudget::with_total_budget(Some(0));
+    let cached_without_network = GitHubEnrichmentClient::with_api_base_and_budget(
+        &config,
+        "http://127.0.0.1:9",
+        budget.clone(),
+    )
+    .unwrap()
+    .enrich_issue(&paths, &issue, false)
+    .await;
+    assert_eq!(cached_without_network.repository.forks, 42);
+    assert_eq!(budget.report().total_network_requests, 0);
+
     let refreshed = GitHubEnrichmentClient::with_api_base(&config, "http://127.0.0.1:9")
         .unwrap()
         .enrich_issue(&paths, &issue, true)
         .await;
     assert_ne!(refreshed.repository.forks, 42);
     assert!(!refreshed.warnings.is_empty());
+}
+
+#[tokio::test]
+async fn stale_enrichment_cache_refreshes_from_network() {
+    let (base_url, handle) = start_enrichment_server();
+
+    let dir = tempdir().unwrap();
+    let paths = test_paths(dir.path());
+    paths.ensure_layout().unwrap();
+    let config = Config::default();
+    let issue = issue();
+    let mut stale = issue_finder::github_enrichment::EnrichedIssue::from_issue(&issue);
+    stale.repository.forks = 7;
+    stale.source_fetched_at = (Utc::now() - chrono::Duration::minutes(480)).to_rfc3339();
+    let cache_path = paths.enrichment_cache_path(&issue.repo_full_name, issue.number);
+    std::fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+    std::fs::write(cache_path, serde_json::to_vec_pretty(&stale).unwrap()).unwrap();
+
+    let refreshed = GitHubEnrichmentClient::with_api_base(&config, base_url)
+        .unwrap()
+        .enrich_issue(&paths, &issue, false)
+        .await;
+    handle.join().unwrap();
+
+    assert_eq!(refreshed.repository.forks, 42);
+    assert!(refreshed.warnings.is_empty());
 }
 
 #[tokio::test]
@@ -58,6 +97,36 @@ async fn partial_enrichment_failure_still_produces_assessment() {
     let assessment = assess_issue(&enriched, &config.profile);
     assert!(assessment.final_rank_score >= 0);
     assert!(!assessment.missing_evidence.is_empty());
+}
+
+#[tokio::test]
+async fn budget_exhaustion_is_deterministic_and_explainable() {
+    let dir = tempdir().unwrap();
+    let paths = test_paths(dir.path());
+    paths.ensure_layout().unwrap();
+    let config = Config::default();
+    let issue = issue();
+    let budget = GitHubApiBudget::with_total_budget(Some(0));
+    let enriched = GitHubEnrichmentClient::with_api_base_and_budget(
+        &config,
+        "http://127.0.0.1:9",
+        budget.clone(),
+    )
+    .unwrap()
+    .enrich_issue(&paths, &issue, true)
+    .await;
+
+    assert!(enriched
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("GitHub API budget exhausted")));
+    assert!(enriched
+        .competition
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("GitHub API budget exhausted")));
+    assert_eq!(budget.report().total_network_requests, 0);
+    assert!(!budget.report().budget_exhausted.is_empty());
 }
 
 #[tokio::test]
@@ -124,6 +193,46 @@ async fn timeline_completion_updates_missing_competition_cache() {
         .await;
     assert_eq!(cached.competition.open_pr_refs, 1);
     assert!(!competition_timeline_missing(&cached));
+
+    let budget = GitHubApiBudget::with_total_budget(Some(0));
+    let cached_without_network = GitHubEnrichmentClient::with_api_base_and_budget(
+        &config,
+        "http://127.0.0.1:9",
+        budget.clone(),
+    )
+    .unwrap()
+    .complete_competition_timeline(&paths, &issue, &current, false)
+    .await;
+    assert_eq!(cached_without_network.competition.open_pr_refs, 1);
+    assert_eq!(budget.report().total_network_requests, 0);
+}
+
+#[tokio::test]
+async fn fresh_cache_preserves_ranking_assessment() {
+    let (base_url, handle) = start_enrichment_server();
+
+    let dir = tempdir().unwrap();
+    let paths = test_paths(dir.path());
+    paths.ensure_layout().unwrap();
+    let config = Config::default();
+    let issue = issue();
+    let enriched = GitHubEnrichmentClient::with_api_base(&config, base_url)
+        .unwrap()
+        .enrich_issue(&paths, &issue, true)
+        .await;
+    handle.join().unwrap();
+
+    let cached = GitHubEnrichmentClient::with_api_base(&config, "http://127.0.0.1:9")
+        .unwrap()
+        .enrich_issue(&paths, &issue, false)
+        .await;
+
+    let live_assessment = assess_issue(&enriched, &config.profile);
+    let cached_assessment = assess_issue(&cached, &config.profile);
+    assert_eq!(
+        cached_assessment.final_rank_score,
+        live_assessment.final_rank_score
+    );
 }
 
 fn test_paths(root: &std::path::Path) -> IssueFinderPaths {
