@@ -24,7 +24,7 @@
         "profile": { "type": "string" },
         "sourceTier": {
           "type": "string",
-          "enum": ["overlay_trusted", "gfi_trusted", "global"]
+          "enum": ["overlay_trusted", "profile_trusted", "gfi_trusted", "global"]
         },
         "issue": { "$ref": "#/$defs/issue" },
         "repository": { "$ref": "#/$defs/repository" },
@@ -152,4 +152,3 @@
     }
   }
 }
-

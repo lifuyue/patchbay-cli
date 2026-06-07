@@ -89,6 +89,64 @@
       }
     },
     {
+      "id": "python_pants_skip_warning_good",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "pantsbuild/pants",
+        "number": 13825,
+        "title": "Confusing warning message when running on a target with skip_*",
+        "body": "Running Pants on a target with skip_* emits a confusing warning. Steps to reproduce: configure a target with skip tests, run the Pants CLI, and observe the warning. Expected behavior: warning should explain why the target was skipped and include the target address. Suggested fix: update the warning path and add a regression test.",
+        "labels": ["bug", "good first issue", "onboarding"],
+        "createdAgeDays": 120,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Python build system and CLI for monorepos",
+        "language": "Python",
+        "stars": 3600,
+        "forks": 560,
+        "watchers": 95,
+        "openIssues": 680,
+        "topics": ["python", "build-system", "cli", "testing"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "good",
+        "behavior": "visible",
+        "minProfileFit": 80,
+        "reasons": ["Python CLI tooling bug with concrete reproduction and regression path."]
+      }
+    },
+    {
+      "id": "python_hatch_optional_uv_good",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "pypa/hatch",
+        "number": 2141,
+        "title": "Make uv optional",
+        "body": "Hatch currently assumes uv is installed for an environment path. Steps to reproduce: run hatch env show without uv installed and observe the failure. Expected behavior: Hatch should gracefully fall back or report a clear optional dependency message. Suggested fix: guard the uv call and add CLI tests.",
+        "labels": ["enhancement", "good first issue"],
+        "createdAgeDays": 80,
+        "updatedAgeDays": 20
+      },
+      "repository": {
+        "description": "Python project manager and environment CLI",
+        "language": "Python",
+        "stars": 6700,
+        "forks": 350,
+        "watchers": 70,
+        "openIssues": 260,
+        "topics": ["python", "packaging", "cli"],
+        "pushedAgeDays": 2
+      },
+      "expected": {
+        "quality": "good",
+        "behavior": "visible",
+        "minProfileFit": 80,
+        "reasons": ["Python packaging CLI issue with clear fallback behavior and tests."]
+      }
+    },
+    {
       "id": "python_cdk_weak_profile",
       "sourceTier": "gfi_trusted",
       "issue": {

@@ -554,6 +554,7 @@ fn aliases(term: &str) -> &'static [&'static str] {
             "subcommand",
             "base command",
         ],
+        "ai" | "llm" | "agent" => &["mcp", "model context protocol"],
         _ => &[],
     }
 }
@@ -607,7 +608,15 @@ fn domain_aliases(term: &str) -> &'static [&'static str] {
         "testing" => &["regression", "test", "tests", "validation"],
         "cli" => &["command", "completion", "terminal"],
         "developer tools" | "developer tool" => &["sdk", "tooling"],
-        "ai" | "llm" | "agent" => &["eval", "evaluation", "memory", "prompt", "sampling"],
+        "ai" | "llm" | "agent" => &[
+            "eval",
+            "evaluation",
+            "mcp",
+            "memory",
+            "model context protocol",
+            "prompt",
+            "sampling",
+        ],
         "kubernetes" | "docker" | "ci" | "infrastructure" => &[
             "container",
             "deploy",
@@ -734,7 +743,7 @@ fn apply_profile_focus_caps(
         if issue_matches.is_empty() || only_generic_agent {
             *score = (*score).min(55);
             reasons.push(
-                "AI/agent profile requires issue-level AI, LLM, agent, prompt, eval, or model evidence"
+                "AI/agent profile requires issue-level AI, LLM, agent, MCP, prompt, eval, or model evidence"
                     .to_string(),
             );
             evidence_refs.push("profile:keywords".to_string());
@@ -871,8 +880,10 @@ const AI_FOCUS_TERMS: &[&str] = &[
     "evaluation",
     "inference",
     "machine learning",
+    "mcp",
     "memory",
     "model",
+    "model context protocol",
     "openai",
     "prompt",
     "pytorch",

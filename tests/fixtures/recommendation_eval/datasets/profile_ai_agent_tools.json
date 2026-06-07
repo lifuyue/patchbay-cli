@@ -61,6 +61,35 @@
       }
     },
     {
+      "id": "ai_mcp_tool_integration_good",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "rhesis-ai/rhesis",
+        "number": 1872,
+        "title": "Add GitLab MCP tool integration",
+        "body": "Implement a GitLab MCP integration for the SDK. Add the MCP tool wrapper, map GitLab API responses into tool outputs, and cover the integration with validation tests. Expected behavior: agent workflows can call the GitLab MCP tool and receive structured results.",
+        "labels": ["Integrations", "SDK", "good first issue"],
+        "createdAgeDays": 5,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "LLM evaluation platform with SDK integrations for AI agent workflows",
+        "language": "Python",
+        "stars": 360,
+        "forks": 24,
+        "watchers": 1,
+        "openIssues": 64,
+        "topics": ["ai", "llm", "mcp", "sdk"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "good",
+        "behavior": "visible",
+        "minProfileFit": 80,
+        "reasons": ["MCP integration is a direct AI agent-tooling task and should not be capped as profile mismatch."]
+      }
+    },
+    {
       "id": "ai_uv_package_manager_profile_mismatch",
       "sourceTier": "gfi_trusted",
       "issue": {

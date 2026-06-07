@@ -11,6 +11,8 @@ use crate::scoring::{has_actionable_signal, normalize, profile_terms};
 const GFI_REPOSITORIES: &str = include_str!("../data/discovery/good-first-issue-repositories.toml");
 const OVERLAY_REPOSITORIES: &str =
     include_str!("../data/discovery/trusted-overlay-repositories.toml");
+const PROFILE_TRUSTED_REPOSITORIES: &str =
+    include_str!("../data/discovery/profile-trusted-repositories.toml");
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DiscoveryCandidate {
@@ -77,6 +79,7 @@ impl DiscoveryCandidate {
 pub enum RepoTrustTier {
     Global,
     GfiTrusted,
+    ProfileTrusted,
     OverlayTrusted,
 }
 
@@ -85,13 +88,15 @@ impl RepoTrustTier {
         match self {
             Self::Global => 0,
             Self::GfiTrusted => 1,
-            Self::OverlayTrusted => 2,
+            Self::ProfileTrusted => 2,
+            Self::OverlayTrusted => 3,
         }
     }
 
     pub fn repo_quota(self) -> usize {
         match self {
             Self::OverlayTrusted => 5,
+            Self::ProfileTrusted => 4,
             Self::GfiTrusted => 3,
             Self::Global => 2,
         }
@@ -103,6 +108,7 @@ impl std::fmt::Display for RepoTrustTier {
         let value = match self {
             Self::Global => "global",
             Self::GfiTrusted => "gfi_trusted",
+            Self::ProfileTrusted => "profile_trusted",
             Self::OverlayTrusted => "overlay_trusted",
         };
         formatter.write_str(value)
@@ -126,6 +132,17 @@ struct RepositoryList {
     repositories: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ProfileRepositoryList {
+    buckets: Vec<ProfileRepositoryBucket>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProfileRepositoryBucket {
+    profile: String,
+    repositories: Vec<String>,
+}
+
 pub fn overlay_repositories() -> Result<Vec<TrustedRepository>> {
     parse_repository_list(OVERLAY_REPOSITORIES)
 }
@@ -133,6 +150,32 @@ pub fn overlay_repositories() -> Result<Vec<TrustedRepository>> {
 pub fn gfi_repositories(profile: &ProfileConfig, limit: usize) -> Result<Vec<TrustedRepository>> {
     let repositories = parse_repository_list(GFI_REPOSITORIES)?;
     Ok(select_gfi_repositories(repositories, profile, limit))
+}
+
+pub fn profile_trusted_repositories(
+    profile: &ProfileConfig,
+    limit: usize,
+) -> Result<Vec<TrustedRepository>> {
+    let bucket_id = profile_bucket_id(profile);
+    let list = toml::from_str::<ProfileRepositoryList>(PROFILE_TRUSTED_REPOSITORIES)
+        .context("unable to parse profile trusted repository list")?;
+    let mut seen = HashSet::new();
+    let mut repositories = Vec::new();
+    for bucket in list.buckets {
+        if bucket.profile != bucket_id {
+            continue;
+        }
+        for item in bucket.repositories {
+            if let Some(repository) = parse_repository(&item) {
+                let key = repository.full_name();
+                if seen.insert(key) {
+                    repositories.push(repository);
+                }
+            }
+        }
+    }
+    repositories.truncate(limit);
+    Ok(repositories)
 }
 
 pub fn select_enrichment_candidates(
@@ -145,9 +188,10 @@ pub fn select_enrichment_candidates(
 
     sort_candidates(&mut candidates);
 
-    let overlay_target = max_budget * 20 / 100;
-    let gfi_target = max_budget * 50 / 100;
-    let global_target = max_budget.saturating_sub(overlay_target + gfi_target);
+    let overlay_target = max_budget * 15 / 100;
+    let profile_target = max_budget * 35 / 100;
+    let gfi_target = max_budget * 30 / 100;
+    let global_target = max_budget.saturating_sub(overlay_target + profile_target + gfi_target);
 
     let mut selected = Vec::new();
     let mut selected_keys = HashSet::new();
@@ -163,13 +207,23 @@ pub fn select_enrichment_candidates(
     );
     let overlay_shortfall = overlay_target.saturating_sub(overlay_taken);
 
+    let profile_taken = take_candidates(
+        &candidates,
+        &mut selected,
+        &mut selected_keys,
+        &mut repo_counts,
+        Some(RepoTrustTier::ProfileTrusted),
+        profile_target + overlay_shortfall,
+    );
+    let profile_shortfall = (profile_target + overlay_shortfall).saturating_sub(profile_taken);
+
     take_candidates(
         &candidates,
         &mut selected,
         &mut selected_keys,
         &mut repo_counts,
         Some(RepoTrustTier::GfiTrusted),
-        gfi_target + overlay_shortfall,
+        gfi_target + profile_shortfall,
     );
 
     take_candidates(
@@ -281,6 +335,7 @@ fn score_discovery_candidate(candidate: &DiscoveryCandidate, profile: &ProfileCo
 
     let mut score = match candidate.trust_tier {
         RepoTrustTier::OverlayTrusted => 40,
+        RepoTrustTier::ProfileTrusted => 36,
         RepoTrustTier::GfiTrusted => 30,
         RepoTrustTier::Global => 0,
     };
@@ -415,6 +470,28 @@ fn select_gfi_repositories(
     repositories
 }
 
+fn profile_bucket_id(profile: &ProfileConfig) -> &'static str {
+    let terms = profile_terms(profile);
+    let has = |needle: &str| terms.iter().any(|term| term == needle);
+
+    if has("kubernetes") || has("docker") || has("ci") || has("infrastructure") {
+        return "devops_infra";
+    }
+    if has("ai") || has("llm") || has("agent") {
+        return "ai_agent_tools";
+    }
+    if has("python") && (has("data") || has("pandas") || has("testing")) {
+        return "python_data_cli";
+    }
+    if (has("rust") && has("go")) || has("backend") || has("compiler") || has("cargo") {
+        return "rust_backend_systems";
+    }
+    if has("frontend") || has("react") || has("ui") || has("browser") {
+        return "typescript_frontend";
+    }
+    "default_cli_devtools"
+}
+
 fn repository_priority(repository: &TrustedRepository, terms: &[String]) -> i32 {
     let full_name = normalize(&repository.full_name());
     let mut score = 0;
@@ -467,7 +544,8 @@ mod tests {
     use chrono::Utc;
 
     use super::{
-        merge_candidates, select_enrichment_candidates, DiscoveryCandidate, RepoTrustTier,
+        merge_candidates, profile_trusted_repositories, select_enrichment_candidates,
+        DiscoveryCandidate, RepoTrustTier,
     };
     use crate::config::ProfileConfig;
     use crate::github::GitHubIssue;
@@ -501,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn enrichment_selection_reserves_gfi_budget_when_candidates_exist() {
+    fn enrichment_selection_reserves_gfi_budget_when_no_profile_trusted_candidates_exist() {
         let profile = profile();
         let mut candidates = Vec::new();
         for index in 0..10 {
@@ -540,7 +618,63 @@ mod tests {
             .count();
 
         assert!(gfi_count >= 50, "{gfi_count}");
-        assert!(global_count <= 30, "{global_count}");
+        assert!(global_count <= 20, "{global_count}");
+    }
+
+    #[test]
+    fn enrichment_selection_prioritizes_profile_trusted_budget() {
+        let profile = profile();
+        let mut candidates = Vec::new();
+        for index in 0..10 {
+            candidates.push(DiscoveryCandidate::new(
+                issue(&format!("overlay/repo-{index}"), 1, "Fix Rust CLI bug"),
+                format!("overlay:{index}"),
+                RepoTrustTier::OverlayTrusted,
+                &profile,
+            ));
+        }
+        for index in 0..70 {
+            candidates.push(DiscoveryCandidate::new(
+                issue(&format!("profile/repo-{index}"), 1, "Fix Rust CLI bug"),
+                format!("profile:{index}"),
+                RepoTrustTier::ProfileTrusted,
+                &profile,
+            ));
+        }
+        for index in 0..70 {
+            candidates.push(DiscoveryCandidate::new(
+                issue(&format!("gfi/repo-{index}"), 1, "Fix Rust CLI bug"),
+                format!("gfi:{index}"),
+                RepoTrustTier::GfiTrusted,
+                &profile,
+            ));
+        }
+        for index in 0..70 {
+            candidates.push(DiscoveryCandidate::new(
+                issue(&format!("global/repo-{index}"), 1, "Fix Rust CLI bug"),
+                format!("global:{index}"),
+                RepoTrustTier::Global,
+                &profile,
+            ));
+        }
+
+        let selected = select_enrichment_candidates(candidates, 100);
+        let profile_count = selected
+            .iter()
+            .filter(|candidate| candidate.trust_tier == RepoTrustTier::ProfileTrusted)
+            .count();
+        let gfi_count = selected
+            .iter()
+            .filter(|candidate| candidate.trust_tier == RepoTrustTier::GfiTrusted)
+            .count();
+        let global_count = selected
+            .iter()
+            .filter(|candidate| candidate.trust_tier == RepoTrustTier::Global)
+            .count();
+
+        assert!(profile_count >= 35, "{profile_count}");
+        assert!(gfi_count >= 30, "{gfi_count}");
+        assert!(global_count <= 20, "{global_count}");
     }
 
     #[test]
@@ -596,6 +730,51 @@ mod tests {
         let selected = select_enrichment_candidates(vec![global, gfi], 2);
 
         assert_eq!(selected[0].issue.repo_full_name, "gfi/actionable");
+    }
+
+    #[test]
+    fn profile_trusted_repositories_selects_manual_rust_backend_bucket() {
+        let profile = ProfileConfig {
+            tech_stack: vec!["Rust".to_string(), "Go".to_string()],
+            keywords: vec!["backend".to_string(), "cargo".to_string()],
+        };
+
+        let repositories = profile_trusted_repositories(&profile, 3).unwrap();
+        let names = repositories
+            .iter()
+            .map(|repository| repository.full_name())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            names,
+            vec![
+                "rust-analyzer/rust-analyzer".to_string(),
+                "rust-lang/rustfmt".to_string(),
+                "diesel-rs/diesel".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn profile_trusted_repositories_selects_manual_frontend_bucket() {
+        let profile = ProfileConfig {
+            tech_stack: vec!["TypeScript".to_string(), "React".to_string()],
+            keywords: vec!["frontend".to_string(), "component".to_string()],
+        };
+
+        let repositories = profile_trusted_repositories(&profile, 2).unwrap();
+        let names = repositories
+            .iter()
+            .map(|repository| repository.full_name())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            names,
+            vec![
+                "rjsf-team/react-jsonschema-form".to_string(),
+                "apifytech/apify-js".to_string(),
+            ]
+        );
     }
 
     fn profile() -> ProfileConfig {

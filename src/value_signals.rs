@@ -475,6 +475,7 @@ fn aliases(term: &str) -> &'static [&'static str] {
         "go" => &["golang"],
         "rust" => &["cargo", "rs"],
         "cli" => &["command line"],
+        "ai" | "llm" | "agent" => &["mcp", "model context protocol"],
         _ => &[],
     }
 }
