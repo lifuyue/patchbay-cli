@@ -182,6 +182,46 @@
       }
     },
     {
+      "id": "backend_work_on_it_comment_should_hide",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "go-swagger/go-swagger",
+        "number": 2129,
+        "title": "Proposal: gen deepcopy code for each model",
+        "body": "Generate deepcopy code for each Go model to avoid shared mutable state. Expected behavior: generated models include validated deepcopy helpers and tests for nested structures.",
+        "labels": ["help wanted", "good first issue"],
+        "createdAgeDays": 1500,
+        "updatedAgeDays": 30
+      },
+      "repository": {
+        "description": "Swagger 2.0 implementation for Go",
+        "language": "Go",
+        "stars": 9800,
+        "forks": 1300,
+        "watchers": 180,
+        "openIssues": 500,
+        "topics": ["go", "api", "codegen"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "If not completed, I would like to work on it.",
+          "createdAgeDays": 10
+        },
+        {
+          "body": "Feel free to work on it, it has not been completed.",
+          "createdAgeDays": 9
+        }
+      ],
+      "competition": { "timelineMissing": false, "claimComments": 1 },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Real V4 live replay risk: work-on-it comments should hide an otherwise attractive backend issue."]
+      }
+    },
+    {
       "id": "backend_bastion_low_depth",
       "sourceTier": "gfi_trusted",
       "issue": {

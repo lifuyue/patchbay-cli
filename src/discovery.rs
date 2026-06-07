@@ -772,7 +772,7 @@ mod tests {
             names,
             vec![
                 "rjsf-team/react-jsonschema-form".to_string(),
-                "apifytech/apify-js".to_string(),
+                "facebook/react-native".to_string(),
             ]
         );
     }

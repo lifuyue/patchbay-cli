@@ -350,12 +350,18 @@ pub fn evaluate_dataset(dataset: &EvaluationDataset) -> DatasetReport {
 pub fn profile_config(name: &str) -> ProfileConfig {
     match name {
         "typescript_frontend" => ProfileConfig {
-            tech_stack: vec!["TypeScript".to_string(), "JavaScript".to_string()],
+            tech_stack: vec![
+                "TypeScript".to_string(),
+                "JavaScript".to_string(),
+                "React".to_string(),
+            ],
             keywords: vec![
                 "frontend".to_string(),
                 "react".to_string(),
                 "ui".to_string(),
                 "browser".to_string(),
+                "form".to_string(),
+                "component".to_string(),
             ],
         },
         "rust_backend_systems" => ProfileConfig {
@@ -382,16 +388,23 @@ pub fn profile_config(name: &str) -> ProfileConfig {
                 "ai".to_string(),
                 "llm".to_string(),
                 "agent".to_string(),
+                "mcp".to_string(),
+                "evaluation".to_string(),
+                "model".to_string(),
+                "openai".to_string(),
                 "developer-tools".to_string(),
             ],
         },
         "devops_infra" => ProfileConfig {
-            tech_stack: vec!["Go".to_string(), "TypeScript".to_string()],
+            tech_stack: vec!["Go".to_string(), "YAML".to_string(), "Python".to_string()],
             keywords: vec![
                 "kubernetes".to_string(),
                 "docker".to_string(),
                 "ci".to_string(),
-                "infrastructure".to_string(),
+                "gitops".to_string(),
+                "cloud".to_string(),
+                "infra".to_string(),
+                "operator".to_string(),
             ],
         },
         _ => ProfileConfig {

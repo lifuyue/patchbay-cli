@@ -254,6 +254,7 @@ impl GitHubEnrichmentClient {
                 .push(format!("Issue details enrichment failed: {error}")),
         }
 
+        let mut competition_warnings = Vec::new();
         match self
             .fetch_comments(&owner, &repo, issue.number, enriched.issue.comments_count)
             .await
@@ -276,36 +277,39 @@ impl GitHubEnrichmentClient {
                         .collect(),
                 );
             }
-            Err(error) => enriched
-                .warnings
-                .push(format!("Issue comments enrichment failed: {error}")),
+            Err(error) => {
+                enriched
+                    .warnings
+                    .push(format!("Issue comments enrichment failed: {error}"));
+                if enriched.issue.comments_count > 0 {
+                    competition_warnings.push(format!(
+                        "Competition comment evidence enrichment failed: {error}"
+                    ));
+                }
+            }
         }
 
-        let comment_bodies = enriched
-            .comments
-            .iter()
-            .map(|comment| comment.body_excerpt.clone())
-            .collect::<Vec<_>>();
+        let competition_texts = competition_texts(&enriched);
         if include_competition_timeline {
             match self.fetch_timeline_refs(&owner, &repo, issue.number).await {
                 Ok(timeline_refs) => {
-                    enriched.competition =
-                        assess_competition(&timeline_refs, &comment_bodies, Vec::new());
+                    enriched.competition = assess_competition(
+                        &timeline_refs,
+                        &competition_texts,
+                        competition_warnings,
+                    );
                 }
                 Err(error) => {
-                    enriched.competition = assess_competition(
-                        &[],
-                        &comment_bodies,
-                        vec![format!("Competition timeline enrichment failed: {error}")],
-                    );
+                    competition_warnings
+                        .push(format!("Competition timeline enrichment failed: {error}"));
+                    enriched.competition =
+                        assess_competition(&[], &competition_texts, competition_warnings);
                 }
             }
         } else {
-            enriched.competition = assess_competition(
-                &[],
-                &comment_bodies,
-                vec!["Competition timeline evidence was not fetched".to_string()],
-            );
+            competition_warnings.push("Competition timeline evidence was not fetched".to_string());
+            enriched.competition =
+                assess_competition(&[], &competition_texts, competition_warnings);
         }
 
         match self
@@ -327,6 +331,90 @@ impl GitHubEnrichmentClient {
 
         enriched.recompute_activity();
         enriched.recompute_growth_notes();
+        let _ = save_cached_enrichment(paths, issue, &enriched);
+        enriched
+    }
+
+    pub async fn complete_competition_timeline(
+        &self,
+        paths: &IssueFinderPaths,
+        issue: &GitHubIssue,
+        current: &EnrichedIssue,
+        refresh: bool,
+    ) -> EnrichedIssue {
+        if !competition_timeline_missing(current) {
+            return current.clone();
+        }
+
+        if !refresh {
+            if let Ok(Some(cached)) = load_cached_enrichment(paths, issue) {
+                if !competition_timeline_missing(&cached) {
+                    return cached;
+                }
+            }
+        }
+
+        let mut enriched = current.clone();
+        let Some((owner, repo)) = split_repo_full_name(&issue.repo_full_name) else {
+            enriched
+                .warnings
+                .push("Unable to split repository full name for timeline completion".to_string());
+            return enriched;
+        };
+
+        let mut competition_warnings = Vec::new();
+        if competition_comment_evidence_failed(&enriched)
+            || (enriched.issue.comments_count > 0 && enriched.comments.is_empty())
+        {
+            match self
+                .fetch_comments(&owner, &repo, issue.number, enriched.issue.comments_count)
+                .await
+            {
+                Ok(comments) => {
+                    enriched.comments = comments;
+                    enriched.participants.commenters = unique_nonempty(
+                        enriched
+                            .comments
+                            .iter()
+                            .filter_map(|comment| comment.author.clone())
+                            .collect(),
+                    );
+                    enriched.participants.maintainer_commenters = unique_nonempty(
+                        enriched
+                            .comments
+                            .iter()
+                            .filter(|comment| {
+                                is_maintainer_association(&comment.author_association)
+                            })
+                            .filter_map(|comment| comment.author.clone())
+                            .collect(),
+                    );
+                }
+                Err(error) => {
+                    enriched
+                        .warnings
+                        .push(format!("Issue comments completion failed: {error}"));
+                    competition_warnings.push(format!(
+                        "Competition comment evidence enrichment failed: {error}"
+                    ));
+                }
+            }
+        }
+
+        let competition_texts = competition_texts(&enriched);
+        match self.fetch_timeline_refs(&owner, &repo, issue.number).await {
+            Ok(timeline_refs) => {
+                enriched.competition =
+                    assess_competition(&timeline_refs, &competition_texts, competition_warnings);
+            }
+            Err(error) => {
+                competition_warnings
+                    .push(format!("Competition timeline enrichment failed: {error}"));
+                enriched.competition =
+                    assess_competition(&[], &competition_texts, competition_warnings);
+            }
+        }
+        enriched.source_fetched_at = Utc::now().to_rfc3339();
         let _ = save_cached_enrichment(paths, issue, &enriched);
         enriched
     }
@@ -685,10 +773,48 @@ fn default_competition_facts() -> CompetitionFacts {
     CompetitionFacts::missing_timeline()
 }
 
-fn competition_timeline_missing(enriched: &EnrichedIssue) -> bool {
+fn competition_texts(enriched: &EnrichedIssue) -> Vec<String> {
+    std::iter::once(enriched.issue.body.clone())
+        .chain(
+            enriched
+                .comments
+                .iter()
+                .map(|comment| comment.body_excerpt.clone()),
+        )
+        .collect()
+}
+
+pub fn competition_timeline_missing(enriched: &EnrichedIssue) -> bool {
     enriched.competition.warnings.iter().any(|warning| {
-        warning.contains("timeline evidence was not fetched")
-            || warning.contains("timeline enrichment failed")
+        let lower = warning.to_lowercase();
+        lower.contains("timeline evidence was not fetched")
+            || lower.contains("timeline enrichment failed")
+            || lower.contains("timeline completion skipped")
+            || lower.contains("comment evidence enrichment failed")
+    })
+}
+
+pub fn competition_timeline_not_fetched(enriched: &EnrichedIssue) -> bool {
+    let warnings = &enriched.competition.warnings;
+    if warnings.iter().any(|warning| {
+        let lower = warning.to_lowercase();
+        lower.contains("timeline enrichment failed")
+            || lower.contains("timeline completion skipped")
+    }) {
+        return false;
+    }
+    warnings.iter().any(|warning| {
+        let lower = warning.to_lowercase();
+        lower.contains("timeline evidence was not fetched")
+            || lower.contains("comment evidence enrichment failed")
+    })
+}
+
+fn competition_comment_evidence_failed(enriched: &EnrichedIssue) -> bool {
+    enriched.competition.warnings.iter().any(|warning| {
+        warning
+            .to_lowercase()
+            .contains("comment evidence enrichment failed")
     })
 }
 
@@ -796,8 +922,12 @@ fn excerpt(value: String, max_chars: usize) -> String {
 mod tests {
     use chrono::{TimeZone, Utc};
 
+    use crate::competition::CompetitionFacts;
+    use crate::github::GitHubIssue;
+
     use super::{
-        fork_velocity, star_velocity, tail_limited, trailing_sample_pages, TimestampedSample,
+        competition_timeline_missing, competition_timeline_not_fetched, fork_velocity,
+        star_velocity, tail_limited, trailing_sample_pages, EnrichedIssue, TimestampedSample,
     };
 
     fn sample(timestamp: &str) -> TimestampedSample {
@@ -847,5 +977,43 @@ mod tests {
         assert_eq!(tail.len(), 100);
         assert_eq!(tail[0], 1);
         assert_eq!(tail[99], 100);
+    }
+
+    #[test]
+    fn distinguishes_not_fetched_from_failed_or_skipped_timeline() {
+        let mut enriched = EnrichedIssue::from_issue(&issue());
+        assert!(competition_timeline_missing(&enriched));
+        assert!(competition_timeline_not_fetched(&enriched));
+
+        enriched.competition = CompetitionFacts {
+            warnings: vec!["Competition timeline enrichment failed: rate limit".to_string()],
+            ..CompetitionFacts::default()
+        };
+        assert!(competition_timeline_missing(&enriched));
+        assert!(!competition_timeline_not_fetched(&enriched));
+
+        enriched.competition = CompetitionFacts {
+            warnings: vec!["Competition timeline completion skipped by budget".to_string()],
+            ..CompetitionFacts::default()
+        };
+        assert!(competition_timeline_missing(&enriched));
+        assert!(!competition_timeline_not_fetched(&enriched));
+    }
+
+    fn issue() -> GitHubIssue {
+        GitHubIssue {
+            id: 1,
+            number: 1,
+            title: "Test issue".to_string(),
+            body: "Test body".to_string(),
+            labels: vec!["good first issue".to_string()],
+            url: "https://github.com/owner/repo/issues/1".to_string(),
+            repo_full_name: "owner/repo".to_string(),
+            repo_name: "repo".to_string(),
+            repo_description: "Test repository".to_string(),
+            repo_stars: 100,
+            created_at: "2026-06-01T00:00:00Z".to_string(),
+            updated_at: "2026-06-01T00:00:00Z".to_string(),
+        }
     }
 }

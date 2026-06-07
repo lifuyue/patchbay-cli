@@ -5,21 +5,26 @@ use std::collections::{HashMap, HashSet};
 use crate::config::Config;
 use crate::discovery::{select_enrichment_candidates, DiscoveryCandidate};
 use crate::github::{GitHubClient, GitHubIssue};
-use crate::github_enrichment::GitHubEnrichmentClient;
+use crate::github_enrichment::{competition_timeline_missing, GitHubEnrichmentClient};
 use crate::paths::IssueFinderPaths;
 use crate::value_scoring::{assess_issue, RankedValueIssue};
 
+use super::competition_completion::{self, CompetitionCompletionStatus};
 use super::events::{record_event_for_issue, RecommendationEventSource, RecommendationEventType};
 use super::feed_ranker::{apply_recommendation_assessments, displayable, sort_by_feed};
 use super::state::load_state_map;
 
 const ENRICHED_SCOUT_CANDIDATE_LIMIT: usize = 180;
-const FALLBACK_ENRICHMENT_CANDIDATE_LIMIT: usize = 40;
-const TRUSTED_FALLBACK_ENRICHMENT_CANDIDATE_LIMIT: usize = 28;
+const FALLBACK_ENRICHMENT_CANDIDATE_LIMIT: usize = 80;
+const TRUSTED_FALLBACK_ENRICHMENT_CANDIDATE_LIMIT: usize = 40;
 const ENRICHMENT_BATCH_SIZE: usize = 25;
 const COMPETITION_TIMELINE_CANDIDATE_LIMIT: usize = 20;
-const ENRICHMENT_CONCURRENCY_LIMIT: usize = 4;
+const ENRICHMENT_CONCURRENCY_LIMIT: usize = 2;
+const COMPETITION_COMPLETION_CONCURRENCY_LIMIT: usize = 2;
+const POST_COMPLETION_TRUSTED_REFILL_LIMIT: usize = 32;
+const POST_COMPLETION_GLOBAL_REFILL_LIMIT: usize = 32;
 const PRIMARY_RESULTS_PER_REPO_LIMIT: usize = 2;
+const COMPETITION_COMPLETED_RESULTS_PER_REPO_LIMIT: usize = 4;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ScoutOptions {
@@ -84,6 +89,7 @@ impl<'a> RecommendationEngine<'a> {
             .await;
         let hard_pass = hard_pass_visible_count(limit);
         let fallback_target = fallback_target_visible_count(limit);
+        let completion_prefill_target = completion_prefill_visible_count(limit);
 
         if display_count(&ranked, limit, false) < hard_pass {
             let mut fallback_enrichment_budget = FALLBACK_ENRICHMENT_CANDIDATE_LIMIT;
@@ -101,7 +107,7 @@ impl<'a> RecommendationEngine<'a> {
                     refresh,
                     display_limit: limit,
                     max_budget: trusted_budget,
-                    stop_visible_at: Some(fallback_target),
+                    stop_visible_at: Some(fallback_target.max(completion_prefill_target)),
                 })
                 .await?;
             fallback_enrichment_budget = fallback_enrichment_budget.saturating_sub(consumed);
@@ -118,9 +124,70 @@ impl<'a> RecommendationEngine<'a> {
                     refresh,
                     display_limit: limit,
                     max_budget: fallback_enrichment_budget,
-                    stop_visible_at: Some(hard_pass),
+                    stop_visible_at: Some(hard_pass.max(completion_prefill_target)),
                 })
                 .await?;
+            }
+        }
+
+        let mut completion_statuses = self
+            .complete_competition_evidence(&enrichment, &mut ranked, refresh, limit)
+            .await;
+        self.apply_feed_ranking(&mut ranked);
+        append_discovery_reasons(&mut ranked, &discovery_by_key);
+        competition_completion::append_completion_explanations(&mut ranked, &completion_statuses);
+
+        if competition_limited_display_count(&ranked, limit, false) < hard_pass {
+            let fallback = github
+                .discover_trusted_fallback_candidates(&self.config.profile)
+                .await?;
+            self.rank_additional_candidates(AdditionalRankingRequest {
+                enrichment: &enrichment,
+                ranked: &mut ranked,
+                discovery_by_key: &mut discovery_by_key,
+                candidates: fallback,
+                refresh,
+                display_limit: limit,
+                max_budget: POST_COMPLETION_TRUSTED_REFILL_LIMIT,
+                stop_visible_at: Some(completion_prefill_target.max(fallback_target)),
+            })
+            .await?;
+            completion_statuses.extend(
+                self.complete_competition_evidence(&enrichment, &mut ranked, refresh, limit)
+                    .await,
+            );
+            self.apply_feed_ranking(&mut ranked);
+            append_discovery_reasons(&mut ranked, &discovery_by_key);
+            competition_completion::append_completion_explanations(
+                &mut ranked,
+                &completion_statuses,
+            );
+
+            if competition_limited_display_count(&ranked, limit, false) < hard_pass {
+                let fallback = github
+                    .discover_global_fallback_candidates(&self.config.profile)
+                    .await?;
+                self.rank_additional_candidates(AdditionalRankingRequest {
+                    enrichment: &enrichment,
+                    ranked: &mut ranked,
+                    discovery_by_key: &mut discovery_by_key,
+                    candidates: fallback,
+                    refresh,
+                    display_limit: limit,
+                    max_budget: POST_COMPLETION_GLOBAL_REFILL_LIMIT,
+                    stop_visible_at: Some(completion_prefill_target.max(hard_pass)),
+                })
+                .await?;
+                completion_statuses.extend(
+                    self.complete_competition_evidence(&enrichment, &mut ranked, refresh, limit)
+                        .await,
+                );
+                self.apply_feed_ranking(&mut ranked);
+                append_discovery_reasons(&mut ranked, &discovery_by_key);
+                competition_completion::append_completion_explanations(
+                    &mut ranked,
+                    &completion_statuses,
+                );
             }
         }
 
@@ -128,7 +195,12 @@ impl<'a> RecommendationEngine<'a> {
             .iter()
             .filter(|item| !displayable(item, options.include_filtered))
             .count();
-        let visible = select_display_candidates(ranked, limit, options.include_filtered);
+        let visible = competition_completion::select_display_candidates(
+            ranked,
+            limit,
+            options.include_filtered,
+            COMPETITION_COMPLETED_RESULTS_PER_REPO_LIMIT,
+        );
 
         if options.record_exposure {
             self.record_exposure(&visible, options.source)?;
@@ -241,7 +313,7 @@ impl<'a> RecommendationEngine<'a> {
             self.apply_feed_ranking(&mut ranked);
             append_discovery_reasons(&mut ranked, &discovery_by_key);
 
-            if display_count(&ranked, limit, false) >= limit {
+            if display_count(&ranked, limit, false) >= completion_prefill_visible_count(limit) {
                 break;
             }
         }
@@ -318,6 +390,76 @@ impl<'a> RecommendationEngine<'a> {
         }
 
         Ok(consumed)
+    }
+
+    async fn complete_competition_evidence(
+        &self,
+        enrichment: &GitHubEnrichmentClient,
+        ranked: &mut [RankedValueIssue],
+        refresh: bool,
+        limit: usize,
+    ) -> HashMap<String, CompetitionCompletionStatus> {
+        if limit == 0 {
+            return HashMap::new();
+        }
+
+        self.apply_feed_ranking(ranked);
+        let plan = competition_completion::plan_completion(ranked, limit);
+        let mut statuses =
+            competition_completion::annotate_skipped_by_budget(ranked, &plan.skipped_keys);
+
+        if plan.complete_keys.is_empty() {
+            return statuses;
+        }
+
+        let requested = plan.complete_keys.into_iter().collect::<HashSet<_>>();
+        let requests = ranked
+            .iter()
+            .filter_map(|item| {
+                let key = competition_completion::issue_key(item);
+                requested
+                    .contains(&key)
+                    .then(|| (key, item.issue.clone(), item.enriched_issue.clone()))
+            })
+            .collect::<Vec<_>>();
+
+        let completed = stream::iter(requests.into_iter().map(
+            |(key, issue, current)| async move {
+                let enriched = enrichment
+                    .complete_competition_timeline(self.paths, &issue, &current, refresh)
+                    .await;
+                let status = if competition_timeline_missing(&enriched) {
+                    CompetitionCompletionStatus::Failed
+                } else {
+                    CompetitionCompletionStatus::Completed
+                };
+                (key, enriched, status)
+            },
+        ))
+        .buffer_unordered(COMPETITION_COMPLETION_CONCURRENCY_LIMIT)
+        .collect::<Vec<_>>()
+        .await;
+
+        let completed_by_key = completed
+            .into_iter()
+            .map(|(key, enriched, status)| {
+                statuses.insert(key.clone(), status);
+                (key, enriched)
+            })
+            .collect::<HashMap<_, _>>();
+
+        for item in ranked {
+            let key = competition_completion::issue_key(item);
+            let Some(enriched) = completed_by_key.get(&key) else {
+                continue;
+            };
+            item.enriched_issue = enriched.clone();
+            item.value_assessment = assess_issue(&item.enriched_issue, &self.config.profile);
+            item.score = item.value_assessment.final_rank_score;
+            item.explanation = item.value_assessment.explanation.clone();
+        }
+
+        statuses
     }
 
     async fn rank_single_issue(
@@ -407,11 +549,29 @@ fn fallback_target_visible_count(limit: usize) -> usize {
     ceil_percent(limit, 80)
 }
 
+fn completion_prefill_visible_count(limit: usize) -> usize {
+    limit.saturating_mul(2).min(limit.saturating_add(15))
+}
+
 fn ceil_percent(value: usize, percent: usize) -> usize {
     if value == 0 {
         return 0;
     }
     (value * percent).div_ceil(100)
+}
+
+fn competition_limited_display_count(
+    ranked: &[RankedValueIssue],
+    limit: usize,
+    include_filtered: bool,
+) -> usize {
+    competition_completion::select_display_candidates(
+        ranked.to_vec(),
+        limit,
+        include_filtered,
+        COMPETITION_COMPLETED_RESULTS_PER_REPO_LIMIT,
+    )
+    .len()
 }
 
 pub fn select_display_candidates(

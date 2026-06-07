@@ -34,6 +34,106 @@
       }
     },
     {
+      "id": "core_completion_open_pr_should_hide",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "example/cli-toolkit",
+        "number": 901,
+        "title": "Fix CLI config reload panic after workspace switch",
+        "body": "Steps to reproduce: run the CLI, switch workspaces, then reload config. Actual behavior is a panic in src/config.rs. Expected behavior is a clean reload with a useful error. Suggested fix: guard the stale workspace handle and add a regression test.",
+        "labels": ["bug", "good first issue"],
+        "createdAgeDays": 8,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Rust CLI developer tools for workspace automation",
+        "language": "Rust",
+        "stars": 3200,
+        "forks": 410,
+        "watchers": 60,
+        "openIssues": 120,
+        "topics": ["rust", "cli", "developer-tools"],
+        "pushedAgeDays": 1
+      },
+      "competition": { "timelineMissing": false, "openPrRefs": 1 },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Represents V4 completion discovering an open PR after a missing-timeline candidate was initially attractive."]
+      }
+    },
+    {
+      "id": "core_completion_clear_timeline_remains_visible",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "example/clear-cli",
+        "number": 902,
+        "title": "Add regression test for CLI workspace path normalization",
+        "body": "The CLI normalizes workspace paths differently on Windows and Linux. Steps to reproduce: create a workspace with a mixed-case path, run the resolver, and compare the generated lockfile. Expected behavior: normalized paths are stable. Suggested fix: normalize through the shared path helper and verify with cargo test.",
+        "labels": ["bug", "good first issue"],
+        "createdAgeDays": 12,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "Rust CLI developer tools for workspace automation",
+        "language": "Rust",
+        "stars": 2800,
+        "forks": 350,
+        "watchers": 55,
+        "openIssues": 80,
+        "topics": ["rust", "cli", "developer-tools"],
+        "pushedAgeDays": 1
+      },
+      "competition": { "timelineMissing": false },
+      "expected": {
+        "quality": "good",
+        "behavior": "visible",
+        "minProfileFit": 80,
+        "reasons": ["Represents V4 completion finding no competition and preserving an actionable trusted candidate."]
+      }
+    },
+    {
+      "id": "core_completion_claim_and_pr_should_hide",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "example/claimed-cli",
+        "number": 903,
+        "title": "Fix CLI plugin install error message",
+        "body": "Plugin install prints a misleading success message even when validation fails. Reproduce by installing a plugin with a malformed manifest. Expected behavior: report the validation error and leave the plugin disabled. Add a unit test for the manifest validator.",
+        "labels": ["bug", "help wanted"],
+        "createdAgeDays": 15,
+        "updatedAgeDays": 3
+      },
+      "repository": {
+        "description": "TypeScript and Rust CLI plugin manager",
+        "language": "TypeScript",
+        "stars": 4800,
+        "forks": 700,
+        "watchers": 90,
+        "openIssues": 180,
+        "topics": ["typescript", "cli", "plugins"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I am working on this and opened a PR with the first fix.",
+          "createdAgeDays": 1
+        }
+      ],
+      "competition": {
+        "timelineMissing": false,
+        "openPrRefs": 1,
+        "workingComments": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Represents V4 completion where comment claim and timeline PR evidence agree that the issue is occupied."]
+      }
+    },
+    {
       "id": "core_claimed_amplify_should_hide",
       "sourceTier": "gfi_trusted",
       "issue": {

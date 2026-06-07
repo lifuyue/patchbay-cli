@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use issue_finder::config::Config;
 use issue_finder::github::GitHubIssue;
-use issue_finder::github_enrichment::GitHubEnrichmentClient;
+use issue_finder::github_enrichment::{competition_timeline_missing, GitHubEnrichmentClient};
 use issue_finder::paths::IssueFinderPaths;
 use issue_finder::value_scoring::assess_issue;
 use tempfile::tempdir;
@@ -94,6 +94,36 @@ async fn enrichment_samples_tail_pages_for_recent_stars_and_comments() {
     assert!(!comment_authors.contains(&"old-comment-0"));
     assert!(comment_authors.contains(&"recent-maintainer"));
     assert!(enriched.activity.maintainer_recent_response);
+}
+
+#[tokio::test]
+async fn timeline_completion_updates_missing_competition_cache() {
+    let (base_url, handle) = start_timeline_completion_server();
+
+    let dir = tempdir().unwrap();
+    let paths = test_paths(dir.path());
+    paths.ensure_layout().unwrap();
+    let config = Config::default();
+    let issue = issue();
+    let current = issue_finder::github_enrichment::EnrichedIssue::from_issue(&issue);
+    assert!(competition_timeline_missing(&current));
+
+    let client = GitHubEnrichmentClient::with_api_base(&config, base_url).unwrap();
+    let completed = client
+        .complete_competition_timeline(&paths, &issue, &current, true)
+        .await;
+    handle.join().unwrap();
+
+    assert_eq!(completed.competition.open_pr_refs, 1);
+    assert!(completed.competition.warnings.is_empty());
+    assert!(!competition_timeline_missing(&completed));
+
+    let cached = GitHubEnrichmentClient::with_api_base(&config, "http://127.0.0.1:9")
+        .unwrap()
+        .complete_competition_timeline(&paths, &issue, &current, false)
+        .await;
+    assert_eq!(cached.competition.open_pr_refs, 1);
+    assert!(!competition_timeline_missing(&cached));
 }
 
 fn test_paths(root: &std::path::Path) -> IssueFinderPaths {
@@ -224,6 +254,42 @@ fn start_tail_sampling_server() -> (String, thread::JoinHandle<()>) {
     (base_url, handle)
 }
 
+fn start_timeline_completion_server() -> (String, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let handle = thread::spawn(move || {
+        let started = Instant::now();
+        let mut last_request_at = Instant::now();
+        let mut served = 0usize;
+        while started.elapsed() < Duration::from_secs(5) {
+            if served >= 1 && last_request_at.elapsed() > Duration::from_millis(250) {
+                break;
+            }
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    last_request_at = Instant::now();
+                    let mut buffer = [0u8; 4096];
+                    let bytes_read = stream.read(&mut buffer).unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buffer[..bytes_read]);
+                    let body = if request.starts_with("GET /repos/owner/repo/issues/12/timeline") {
+                        open_pr_timeline_body()
+                    } else {
+                        "{}".to_string()
+                    };
+                    write_response(&mut stream, &body);
+                    served += 1;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    (base_url, handle)
+}
+
 fn repo_body() -> String {
     r#"{
   "full_name": "owner/repo",
@@ -316,6 +382,10 @@ fn recent_comment_page_body() -> String {
         r#"[{{"body":"recent maintainer reply","author_association":"MEMBER","created_at":"{}","user":{{"login":"recent-maintainer"}}}}]"#,
         Utc::now().to_rfc3339()
     )
+}
+
+fn open_pr_timeline_body() -> String {
+    r#"[{"event":"cross-referenced","created_at":"2026-06-01T00:00:00Z","source":{"issue":{"state":"open","pull_request":{}}}}]"#.to_string()
 }
 
 fn write_response(stream: &mut std::net::TcpStream, body: &str) {
