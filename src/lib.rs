@@ -8,6 +8,7 @@ pub mod doctor;
 pub mod errors;
 pub mod evidence_pack;
 pub mod github;
+pub mod github_budget;
 pub mod github_enrichment;
 pub mod handoff;
 pub mod inbox;

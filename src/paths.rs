@@ -46,6 +46,16 @@ impl IssueFinderPaths {
         self.cache_dir.join("github-issues.json")
     }
 
+    pub fn discovery_cache_dir(&self) -> PathBuf {
+        self.cache_dir.join("discovery")
+    }
+
+    pub fn discovery_cache_path(&self, source: &str, key: &str) -> PathBuf {
+        self.discovery_cache_dir()
+            .join(source)
+            .join(format!("{}.json", sanitize_repo_name(key)))
+    }
+
     pub fn enrichment_cache_dir(&self) -> PathBuf {
         self.cache_dir.join("enrichment")
     }
@@ -56,6 +66,19 @@ impl IssueFinderPaths {
             sanitize_repo_name(repo_full_name),
             issue_number
         ))
+    }
+
+    pub fn enrichment_source_cache_path(&self, source: &str, key: &str) -> PathBuf {
+        self.enrichment_cache_dir()
+            .join(source)
+            .join(format!("{}.json", sanitize_repo_name(key)))
+    }
+
+    pub fn scout_result_cache_path(&self, key: &str) -> PathBuf {
+        self.cache_dir
+            .join("recommendation")
+            .join("scout-result")
+            .join(format!("{}.json", sanitize_repo_name(key)))
     }
 
     pub fn inbox_index_path(&self) -> PathBuf {

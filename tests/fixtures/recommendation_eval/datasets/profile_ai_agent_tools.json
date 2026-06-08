@@ -1,0 +1,388 @@
+{
+  "name": "profile_ai_agent_tools",
+  "profile": "ai_agent_tools",
+  "limit": 15,
+  "samples": [
+    {
+      "id": "ai_agenta_eval_breadcrumbs_excellent",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "agenta-ai/agenta",
+        "number": 4549,
+        "title": "Fix SDK eval breadcrumbs showing Auto Evals",
+        "body": "SDK eval breadcrumbs show Auto Evals instead of the user-defined evaluation name. Steps to reproduce: run an SDK evaluation and open the UI trace. Expected behavior: breadcrumb displays eval name. Suggested fix: pass eval metadata through the SDK response and add regression coverage.",
+        "labels": ["bug", "good first issue"],
+        "createdAgeDays": 8,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "LLM application evaluation and agent tooling",
+        "language": "Python",
+        "stars": 4500,
+        "forks": 600,
+        "watchers": 80,
+        "openIssues": 120,
+        "topics": ["ai", "llm", "eval", "agent"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "excellent",
+        "behavior": "visible_top",
+        "minProfileFit": 80,
+        "reasons": ["Direct AI/eval/tooling issue with clear reproduction."]
+      }
+    },
+    {
+      "id": "ai_agent_context_builder_good",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "ambicuity/terraform-aws-eks-ray",
+        "number": 37,
+        "title": "agent_context_builder.py should respect MEMORY_DIR environment variable",
+        "body": "The agent_context_builder.py script ignores MEMORY_DIR and writes memory files to the default path. Steps to reproduce: set MEMORY_DIR, run the agent context builder, observe output path. Expected behavior: memory directory follows the environment variable. Suggested fix: read env var in the builder and add a test.",
+        "labels": ["good first issue", "python", "agent"],
+        "createdAgeDays": 14,
+        "updatedAgeDays": 9
+      },
+      "repository": {
+        "description": "Agent infrastructure examples",
+        "language": "Python",
+        "stars": 80,
+        "forks": 10,
+        "watchers": 4,
+        "openIssues": 20,
+        "topics": ["ai", "agent", "python"],
+        "pushedAgeDays": 3
+      },
+      "expected": {
+        "quality": "good",
+        "behavior": "fallback_candidate",
+        "reasons": ["Low-influence but strong profile fallback candidate."]
+      }
+    },
+    {
+      "id": "ai_mcp_tool_integration_good",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "rhesis-ai/rhesis",
+        "number": 1872,
+        "title": "Add GitLab MCP tool integration",
+        "body": "Implement a GitLab MCP integration for the SDK. Add the MCP tool wrapper, map GitLab API responses into tool outputs, and cover the integration with validation tests. Expected behavior: agent workflows can call the GitLab MCP tool and receive structured results.",
+        "labels": ["Integrations", "SDK", "good first issue"],
+        "createdAgeDays": 5,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "LLM evaluation platform with SDK integrations for AI agent workflows",
+        "language": "Python",
+        "stars": 360,
+        "forks": 24,
+        "watchers": 1,
+        "openIssues": 64,
+        "topics": ["ai", "llm", "mcp", "sdk"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "good",
+        "behavior": "visible",
+        "minProfileFit": 80,
+        "reasons": ["MCP integration is a direct AI agent-tooling task and should not be capped as profile mismatch."]
+      }
+    },
+    {
+      "id": "ai_uv_package_manager_profile_mismatch",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "astral-sh/uv",
+        "number": 7040,
+        "title": "[feat] Log parent package when erroring during dependency install",
+        "body": "When uv fails during dependency install, the error does not show the parent package that introduced the dependency. Expected behavior: CLI logs the parent package chain. Suggested fix: include parent package context in resolver errors and add CLI snapshot tests.",
+        "labels": ["help wanted", "cli", "error messages"],
+        "createdAgeDays": 640,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "Fast Python package manager and CLI",
+        "language": "Rust",
+        "stars": 86000,
+        "forks": 3200,
+        "watchers": 170,
+        "openIssues": 650,
+        "topics": ["python", "packaging", "resolver"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Python package-manager issue is useful elsewhere but lacks AI, LLM, agent, prompt, eval, or model evidence."]
+      }
+    },
+    {
+      "id": "ai_answered_support_question_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "JiahuiYu/generative_inpainting",
+        "number": 12,
+        "title": "How to run multiple images with multiple masks respectively",
+        "body": "I checked the test file and it can only run on one image and mask. I tried a loop and got a TensorFlow graph reuse error in model.build_server_graph.",
+        "labels": ["good first issue"],
+        "createdAgeDays": 2600,
+        "updatedAgeDays": 120
+      },
+      "repository": {
+        "description": "Generative adversarial image inpainting model",
+        "language": "Python",
+        "stars": 3460,
+        "forks": 799,
+        "watchers": 70,
+        "openIssues": 120,
+        "topics": ["tensorflow", "generative-adversarial-network", "machine-learning"],
+        "pushedAgeDays": 200
+      },
+      "comments": [
+        {
+          "body": "Oh thank you, I have found the answer: set reuse=tf.AUTO_REUSE.",
+          "createdAgeDays": 2400
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["support_question"],
+        "reasons": ["Answered how-to support question should not rank as an AI agent task."]
+      }
+    },
+    {
+      "id": "ai_cdk_typescript_profile_mismatch",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "aws/aws-cdk",
+        "number": 26935,
+        "title": "(aws-glue-alpha): struct schema produces unsupported inputStrings",
+        "body": "Schema.struct generates invalid inputStrings for nested Glue structs. Steps to reproduce: build nested struct schema and query with Athena. Suggested fix: update TypeScript schema rendering.",
+        "labels": ["bug", "good first issue"],
+        "createdAgeDays": 1010,
+        "updatedAgeDays": 12
+      },
+      "repository": {
+        "description": "Cloud development kit for infrastructure as code",
+        "language": "TypeScript",
+        "stars": 12794,
+        "forks": 4200,
+        "watchers": 200,
+        "openIssues": 2700,
+        "topics": ["typescript", "cloud", "infrastructure"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["TypeScript infrastructure issue should not be front-page material for AI agent tooling."]
+      }
+    },
+    {
+      "id": "ai_taipy_gui_repo_topic_mismatch",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "Avaiga/taipy",
+        "number": 2747,
+        "title": "Default table editable behaviour broken when dataframe has index",
+        "body": "A Taipy GUI table with a pandas dataframe index fails when editable is enabled. Steps to reproduce: create a dataframe, set index, render tgb.table editable, then add or delete rows. Expected behavior: table editing works.",
+        "labels": ["good first issue", "GUI: Front-End"],
+        "createdAgeDays": 20,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Python app framework for data and AI applications",
+        "language": "Python",
+        "stars": 19228,
+        "forks": 1981,
+        "watchers": 81,
+        "openIssues": 160,
+        "topics": ["ai", "data-visualization", "developer-tools", "python"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Repo-level AI topic is not enough when the issue itself is a generic GUI table bug."]
+      }
+    },
+    {
+      "id": "ai_agenta_reset_password_repo_topic_mismatch",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "agenta-ai/agenta",
+        "number": 2572,
+        "title": "Add Reset Password Functionality to Workspace UI",
+        "body": "Add reset password functionality in the workspace UI. Add a reset password element next to each user, show a confirmation dialog, call the password reset API, and show success or error feedback.",
+        "labels": ["good first issue", "Frontend", "UI"],
+        "createdAgeDays": 60,
+        "updatedAgeDays": 5
+      },
+      "repository": {
+        "description": "LLM application evaluation and agent tooling",
+        "language": "TypeScript",
+        "stars": 4177,
+        "forks": 539,
+        "watchers": 31,
+        "openIssues": 120,
+        "topics": ["agents", "llm-evaluation", "prompt-engineering"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["AI repo context should not make a generic account-management UI issue rank for agent tooling."]
+      }
+    },
+    {
+      "id": "ai_httpie_user_agent_false_positive",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "httpie/cli",
+        "number": 799,
+        "title": "--pretty=all piped to a pager does not work on Windows",
+        "body": "HTTPie color output piped to less or more on Windows does not show colors. Debug output includes regular HTTP headers such as User-Agent. Expected behavior: pretty colored output survives paging.",
+        "labels": ["bug", "windows", "help wanted"],
+        "createdAgeDays": 2200,
+        "updatedAgeDays": 600
+      },
+      "repository": {
+        "description": "HTTP command line client",
+        "language": "Python",
+        "stars": 38203,
+        "forks": 3955,
+        "watchers": 113,
+        "openIssues": 300,
+        "topics": ["cli", "developer-tools", "python", "terminal"],
+        "pushedAgeDays": 5
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["HTTP User-Agent text must not satisfy the AI agent profile."]
+      }
+    },
+    {
+      "id": "ai_learning_resource_reject",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "adph25/learning-resource",
+        "number": 27,
+        "title": "10 bộ hướng dẫn về AI Agents cho người mới",
+        "body": "Add ten beginner learning resources about AI agents to the resource list.",
+        "labels": ["good first issue", "ai"],
+        "createdAgeDays": 4,
+        "updatedAgeDays": 4
+      },
+      "repository": {
+        "description": "Learning resources",
+        "language": "Markdown",
+        "stars": 6,
+        "forks": 2,
+        "watchers": 0,
+        "openIssues": 40,
+        "topics": ["ai", "learning"],
+        "pushedAgeDays": 4
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["toy_no_code"],
+        "reasons": ["Learning-resource content addition is not an agent tooling coding task."]
+      }
+    },
+    {
+      "id": "ai_pytorch_profiler_good",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "PyTorchLightning/pytorch-lightning",
+        "number": 9136,
+        "title": "AdvancedProfiler ValueError stopping action that was never started",
+        "body": "AdvancedProfiler raises ValueError when stopping an action that was never started. Expected behavior: profiler handles missing action safely. Suggested fix: guard stop calls and add tests.",
+        "labels": ["bug", "good first issue"],
+        "createdAgeDays": 1200,
+        "updatedAgeDays": 240
+      },
+      "repository": {
+        "description": "Python machine learning framework",
+        "language": "Python",
+        "stars": 29000,
+        "forks": 3500,
+        "watchers": 350,
+        "openIssues": 900,
+        "topics": ["python", "ai", "testing"],
+        "pushedAgeDays": 2
+      },
+      "expected": {
+        "quality": "good",
+        "behavior": "visible",
+        "reasons": ["AI-adjacent Python testing issue, but not agent-specific."]
+      }
+    },
+    {
+      "id": "ai_skaffold_weak_profile",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "GoogleContainerTools/skaffold",
+        "number": 5387,
+        "title": "add the post-render option to the helm deploy",
+        "body": "Helm deploy does not expose the post-render option. Expected behavior: skaffold config accepts post-render and passes it to helm. Suggested fix: update deploy schema and integration tests.",
+        "labels": ["good first issue", "helm"],
+        "createdAgeDays": 1400,
+        "updatedAgeDays": 500
+      },
+      "repository": {
+        "description": "Kubernetes developer workflow tool",
+        "language": "Go",
+        "stars": 15000,
+        "forks": 2200,
+        "watchers": 220,
+        "openIssues": 600,
+        "topics": ["kubernetes", "docker", "devops"],
+        "pushedAgeDays": 3
+      },
+      "expected": {
+        "quality": "weak",
+        "behavior": "visible_lower",
+        "rejectReasons": ["profile_mismatch", "stale"],
+        "reasons": ["Infrastructure issue should not outrank AI/agent tool issues."]
+      }
+    },
+    {
+      "id": "ai_generative_inpainting_unclear",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "JiahuiYu/generative_inpainting",
+        "number": 12,
+        "title": "How to run multiple images with multiple masks respectively",
+        "body": "Question about running multiple images with multiple masks. The expected command and failure mode are unclear.",
+        "labels": ["good first issue"],
+        "createdAgeDays": 2500,
+        "updatedAgeDays": 900
+      },
+      "repository": {
+        "description": "Image inpainting model",
+        "language": "Python",
+        "stars": 7000,
+        "forks": 1500,
+        "watchers": 120,
+        "openIssues": 80,
+        "topics": ["ai", "python", "machine-learning"],
+        "pushedAgeDays": 800
+      },
+      "expected": {
+        "quality": "weak",
+        "behavior": "visible_lower",
+        "rejectReasons": ["stale"],
+        "reasons": ["AI-related but stale and unclear."]
+      }
+    }
+  ]
+}

@@ -1,0 +1,688 @@
+{
+  "name": "core_quality",
+  "profile": "default_cli_devtools",
+  "limit": 15,
+  "samples": [
+    {
+      "id": "core_cdk_open_pr_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "aws/aws-cdk",
+        "number": 37783,
+        "title": "TableV2MultiAccountReplica missing top-level SSESpecification",
+        "body": "Describe the bug. Using TableV2MultiAccountReplica with customerManagedKey generates invalid CloudFormation. Steps to reproduce: synth the construct and deploy. Expected behavior: top-level SSESpecification is rendered. Actual behavior: deployment fails. Suggested fix: render the same SSESpecification as TableV2 and verify with unit tests.",
+        "labels": ["bug", "good first issue", "effort/small"],
+        "createdAgeDays": 31,
+        "updatedAgeDays": 5
+      },
+      "repository": {
+        "description": "Cloud development kit for infrastructure as code",
+        "language": "TypeScript",
+        "stars": 12794,
+        "forks": 4200,
+        "watchers": 200,
+        "openIssues": 2700,
+        "topics": ["typescript", "cloud", "infrastructure"],
+        "pushedAgeDays": 1
+      },
+      "competition": { "timelineMissing": false, "openPrRefs": 1 },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Open PR evidence means this should not be recommended."]
+      }
+    },
+    {
+      "id": "core_completion_open_pr_should_hide",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "example/cli-toolkit",
+        "number": 901,
+        "title": "Fix CLI config reload panic after workspace switch",
+        "body": "Steps to reproduce: run the CLI, switch workspaces, then reload config. Actual behavior is a panic in src/config.rs. Expected behavior is a clean reload with a useful error. Suggested fix: guard the stale workspace handle and add a regression test.",
+        "labels": ["bug", "good first issue"],
+        "createdAgeDays": 8,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Rust CLI developer tools for workspace automation",
+        "language": "Rust",
+        "stars": 3200,
+        "forks": 410,
+        "watchers": 60,
+        "openIssues": 120,
+        "topics": ["rust", "cli", "developer-tools"],
+        "pushedAgeDays": 1
+      },
+      "competition": { "timelineMissing": false, "openPrRefs": 1 },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Represents V4 completion discovering an open PR after a missing-timeline candidate was initially attractive."]
+      }
+    },
+    {
+      "id": "core_completion_clear_timeline_remains_visible",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "example/clear-cli",
+        "number": 902,
+        "title": "Add regression test for CLI workspace path normalization",
+        "body": "The CLI normalizes workspace paths differently on Windows and Linux. Steps to reproduce: create a workspace with a mixed-case path, run the resolver, and compare the generated lockfile. Expected behavior: normalized paths are stable. Suggested fix: normalize through the shared path helper and verify with cargo test.",
+        "labels": ["bug", "good first issue"],
+        "createdAgeDays": 12,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "Rust CLI developer tools for workspace automation",
+        "language": "Rust",
+        "stars": 2800,
+        "forks": 350,
+        "watchers": 55,
+        "openIssues": 80,
+        "topics": ["rust", "cli", "developer-tools"],
+        "pushedAgeDays": 1
+      },
+      "competition": { "timelineMissing": false },
+      "expected": {
+        "quality": "good",
+        "behavior": "visible",
+        "minProfileFit": 80,
+        "reasons": ["Represents V4 completion finding no competition and preserving an actionable trusted candidate."]
+      }
+    },
+    {
+      "id": "core_completion_claim_and_pr_should_hide",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "example/claimed-cli",
+        "number": 903,
+        "title": "Fix CLI plugin install error message",
+        "body": "Plugin install prints a misleading success message even when validation fails. Reproduce by installing a plugin with a malformed manifest. Expected behavior: report the validation error and leave the plugin disabled. Add a unit test for the manifest validator.",
+        "labels": ["bug", "help wanted"],
+        "createdAgeDays": 15,
+        "updatedAgeDays": 3
+      },
+      "repository": {
+        "description": "TypeScript and Rust CLI plugin manager",
+        "language": "TypeScript",
+        "stars": 4800,
+        "forks": 700,
+        "watchers": 90,
+        "openIssues": 180,
+        "topics": ["typescript", "cli", "plugins"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I am working on this and opened a PR with the first fix.",
+          "createdAgeDays": 1
+        }
+      ],
+      "competition": {
+        "timelineMissing": false,
+        "openPrRefs": 1,
+        "workingComments": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Represents V4 completion where comment claim and timeline PR evidence agree that the issue is occupied."]
+      }
+    },
+    {
+      "id": "core_claimed_amplify_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "aws-amplify/amplify-cli",
+        "number": 13241,
+        "title": "Inconsistencies in Amplify init framework selection flow",
+        "body": "When running init in an empty folder, selecting angular fails early while other frameworks allow environment creation. Expected behavior: framework validation is consistent. Suggested fix: remove the angular-specific validation and verify with init flow tests.",
+        "labels": ["bug", "good first issue", "platform-init"],
+        "createdAgeDays": 900,
+        "updatedAgeDays": 30
+      },
+      "repository": {
+        "description": "AWS Amplify command line interface",
+        "language": "TypeScript",
+        "stars": 2873,
+        "forks": 800,
+        "watchers": 80,
+        "openIssues": 838,
+        "topics": ["typescript", "cli", "developer-tools"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Hello, I am new to open source and would love to contribute to this project. Could this issue be assigned to me?",
+          "createdAgeDays": 20
+        }
+      ],
+      "competition": { "timelineMissing": false, "claimComments": 1 },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Claimed issue should not remain visible."]
+      }
+    },
+    {
+      "id": "core_pr_in_progress_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "aws/aws-cdk",
+        "number": 37783,
+        "title": "TableV2MultiAccountReplica missing top-level SSESpecification",
+        "body": "Using TableV2MultiAccountReplica with customerManagedKey generates invalid CloudFormation. Expected behavior: top-level SSESpecification is rendered. Suggested fix: render the same SSESpecification as TableV2 and verify with unit tests.",
+        "labels": ["bug", "good first issue", "effort/small"],
+        "createdAgeDays": 31,
+        "updatedAgeDays": 5
+      },
+      "repository": {
+        "description": "Cloud development kit for infrastructure as code",
+        "language": "TypeScript",
+        "stars": 12794,
+        "forks": 4200,
+        "watchers": 200,
+        "openIssues": 2700,
+        "topics": ["typescript", "cloud", "infrastructure"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Looks like there's already a pull request in progress now. I'll yield to that one.",
+          "createdAgeDays": 3
+        },
+        {
+          "body": "The PR fixing this is #37982 and is pending maintainer review.",
+          "createdAgeDays": 2
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Natural-language PR-in-progress evidence should hide the issue even without timeline PR refs."]
+      }
+    },
+    {
+      "id": "core_assign_me_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "mattgodbolt/compiler-explorer",
+        "number": 4689,
+        "title": "Try and reduce deduplication in asm-parser-ewavr",
+        "body": "The asm parser has duplicate implementation paths. It would be useful to deduplicate the parser code where beneficial.",
+        "labels": ["help wanted", "good first issue"],
+        "createdAgeDays": 2100,
+        "updatedAgeDays": 120
+      },
+      "repository": {
+        "description": "Compiler explorer and assembly parser tooling",
+        "language": "TypeScript",
+        "stars": 18815,
+        "forks": 2051,
+        "watchers": 244,
+        "openIssues": 900,
+        "topics": ["compiler", "go", "rust"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Can you assign me this issue?",
+          "createdAgeDays": 20
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Assign-me comments mean the issue is already claimed enough to hide from the feed."]
+      }
+    },
+    {
+      "id": "core_low_trust_fork_anomaly_should_hide",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "sis-inf/escuadra",
+        "number": 222,
+        "title": "fix: corregir cli.py para que el help de cada subcomando sea descriptivo",
+        "body": "cli.py defines subcommands and their help text is incomplete. Update help strings for each subcommand and argument.",
+        "labels": ["size:S", "good-first-issue"],
+        "createdAgeDays": 3,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Small Python CLI project",
+        "language": "Python",
+        "stars": 1,
+        "forks": 37,
+        "watchers": 0,
+        "openIssues": 40,
+        "topics": [],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Yo quiero contribuir con este issue",
+          "createdAgeDays": 1
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["low_trust_repo", "claimed_or_pr"],
+        "reasons": ["Fork/star anomaly and claimed comment should not appear in the feed."]
+      }
+    },
+    {
+      "id": "core_awaiting_pr_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "rjsf-team/react-jsonschema-form",
+        "number": 3450,
+        "title": "Nested dependencies not updated correctly",
+        "body": "Conditional schema property values do not update as expected in a React form. Reproduce with the linked playground and add a regression test.",
+        "labels": ["bug", "help wanted"],
+        "createdAgeDays": 900,
+        "updatedAgeDays": 5
+      },
+      "repository": {
+        "description": "React JSON schema form components",
+        "language": "TypeScript",
+        "stars": 15798,
+        "forks": 2320,
+        "watchers": 159,
+        "openIssues": 500,
+        "topics": ["react", "forms", "typescript", "ui"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I can take care of the bug, if nobody working on the issue.",
+          "createdAgeDays": 60
+        },
+        {
+          "body": "I am awaiting a PR from that contributor.",
+          "createdAgeDays": 20
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Claim plus awaiting-PR comments should hide the issue."]
+      }
+    },
+    {
+      "id": "core_want_to_pick_this_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "appbaseio/reactivesearch",
+        "number": 450,
+        "title": "Enhancement: URLParams props for ReactiveMap component",
+        "body": "Add URLParams support for the map component so center and zoom state can be reflected in querystring parameters.",
+        "labels": ["enhancement", "help wanted", "good first issue"],
+        "createdAgeDays": 1800,
+        "updatedAgeDays": 200
+      },
+      "repository": {
+        "description": "React search UI components",
+        "language": "JavaScript",
+        "stars": 4921,
+        "forks": 469,
+        "watchers": 57,
+        "openIssues": 300,
+        "topics": ["react", "ui", "components", "javascript"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I want to pick this, is it available?",
+          "createdAgeDays": 100
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Pick-this comments should count as claim evidence."]
+      }
+    },
+    {
+      "id": "core_take_it_up_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "angular-ui/ui-grid",
+        "number": 7147,
+        "title": "Tab focus order and screen reader text for column headers",
+        "body": "Keyboard focus moves to row checkboxes instead of the next column header. Screen reader row and column announcements are incorrect.",
+        "labels": ["a11y", "good first issue"],
+        "createdAgeDays": 1800,
+        "updatedAgeDays": 100
+      },
+      "repository": {
+        "description": "Angular JavaScript UI grid",
+        "language": "JavaScript",
+        "stars": 5378,
+        "forks": 2423,
+        "watchers": 344,
+        "openIssues": 700,
+        "topics": ["javascript", "ui-grid", "ui"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Does the issue still exist? If yes, I would like to take it up.",
+          "createdAgeDays": 40
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Take-it-up comments are claim evidence."]
+      }
+    },
+    {
+      "id": "core_solved_support_question_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "appbaseio/reactivesearch",
+        "number": 831,
+        "title": "DynamicRangeInput",
+        "body": "Feature request/question. Is there a way to combine DynamicRangeSlider min/max display with RangeInput value editing?",
+        "labels": ["enhancement", "help wanted"],
+        "createdAgeDays": 1800,
+        "updatedAgeDays": 300
+      },
+      "repository": {
+        "description": "React search UI components",
+        "language": "JavaScript",
+        "stars": 4921,
+        "forks": 469,
+        "watchers": 57,
+        "openIssues": 300,
+        "topics": ["react", "ui", "components", "javascript"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I've solved this problem by using an external Elasticsearch API call to store the min/max values in state.",
+          "createdAgeDays": 300
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["support_question"],
+        "reasons": ["Solved support-question workaround should not rank as an open implementation issue."]
+      }
+    },
+    {
+      "id": "core_dependency_dashboard_should_hide",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "Far-Beyond-Pulsar/Pulsar-Native",
+        "number": 151,
+        "title": "Dependency Dashboard",
+        "body": "This issue lists Renovate updates and detected dependencies. View abandoned dependencies and package updates generated by Renovate.",
+        "labels": ["documentation", "enhancement", "good first issue"],
+        "createdAgeDays": 10,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Rust native application",
+        "language": "Rust",
+        "stars": 330,
+        "forks": 55,
+        "watchers": 10,
+        "openIssues": 34,
+        "topics": ["rust"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["dashboard_noise"],
+        "reasons": ["Renovate dependency dashboards are not human contribution tasks."]
+      }
+    },
+    {
+      "id": "core_toy_yaml_converter_should_hide",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "shabeeltt/devtools-hub",
+        "number": 78,
+        "title": "Add YAML to JSON Converter",
+        "body": "Add a YAML to JSON converter card to the devtools hub. Keep the page consistent with the other converter tools.",
+        "labels": ["good first issue", "frontend"],
+        "createdAgeDays": 3,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Small collection of developer tools",
+        "language": "TypeScript",
+        "stars": 12,
+        "forks": 4,
+        "watchers": 0,
+        "openIssues": 80,
+        "topics": ["developer-tools"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["toy_no_code"],
+        "reasons": ["Toy converter tasks should not pollute high-value ranking."]
+      }
+    },
+    {
+      "id": "core_comment_says_can_be_closed_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "astral-sh/uv",
+        "number": 7040,
+        "title": "[feat] Log parent package when erroring during dependency install",
+        "body": "When uv fails during dependency install, the error does not show the parent package that introduced the dependency. Expected behavior: CLI logs the parent package chain.",
+        "labels": ["help wanted", "cli", "error messages"],
+        "createdAgeDays": 640,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "Fast Python package manager and CLI",
+        "language": "Rust",
+        "stars": 86000,
+        "forks": 3200,
+        "watchers": 170,
+        "openIssues": 650,
+        "topics": ["python", "packaging", "resolver"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I verified this against current master and the parent chain is now shown. Looks like this issue can be closed.",
+          "createdAgeDays": 1
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Comment evidence says the issue is fixed enough to close."]
+      }
+    },
+    {
+      "id": "core_submitted_pr_comment_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "cornellius-gp/gpytorch",
+        "number": 724,
+        "title": "Standardize predictors for ARD",
+        "body": "Examples should standardize input data for ARD kernels to avoid zero gradients. Suggested fix: update docs and examples with standardized predictors.",
+        "labels": ["documentation", "good first issue"],
+        "createdAgeDays": 1500,
+        "updatedAgeDays": 10
+      },
+      "repository": {
+        "description": "Gaussian process models in PyTorch",
+        "language": "Python",
+        "stars": 3883,
+        "forks": 594,
+        "watchers": 54,
+        "openIssues": 120,
+        "topics": ["python", "pytorch", "machine-learning"],
+        "pushedAgeDays": 5
+      },
+      "comments": [
+        {
+          "body": "I've submitted a PR to address this issue: #2751.",
+          "createdAgeDays": 1
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Submitted PR comment should hide the candidate."]
+      }
+    },
+    {
+      "id": "core_go_ahead_claim_should_hide",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "CodeGraphContext/CodeGraphContext",
+        "number": 583,
+        "title": "New tool/cli cmd",
+        "body": "`cgc prompt` should be a new tool or command so the LLM can adapt to skills.md.",
+        "labels": ["enhancement", "help wanted", "good first issue"],
+        "createdAgeDays": 5,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "Code graph context tool",
+        "language": "Python",
+        "stars": 3620,
+        "forks": 652,
+        "watchers": 19,
+        "openIssues": 80,
+        "topics": ["python", "cli"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Shall I work on this?",
+          "createdAgeDays": 1
+        },
+        {
+          "body": "Yes, go ahead! @DhineshPonnarasan",
+          "authorAssociation": "OWNER",
+          "createdAgeDays": 1
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Maintainer-approved contributor claim should hide the issue."]
+      }
+    },
+    {
+      "id": "core_old_stale_styleguidist_should_lower",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "styleguidist/react-styleguidist",
+        "number": 1661,
+        "title": "Para components should use theme.fontSize.base or theme.fontSize.text",
+        "body": "Current behavior: markdown paragraph content generated by styleguidist does not use the configured theme font size. To reproduce: configure theme.fontSize.text and render markdown. Expected behavior: paragraph text inherits the configured text size.",
+        "labels": ["bug", "help wanted", "good first issue"],
+        "createdAgeDays": 2100,
+        "updatedAgeDays": 300
+      },
+      "repository": {
+        "description": "React style guide generator",
+        "language": "TypeScript",
+        "stars": 11090,
+        "forks": 1500,
+        "watchers": 180,
+        "openIssues": 246,
+        "topics": ["react", "styleguide", "frontend"],
+        "pushedAgeDays": 520
+      },
+      "expected": {
+        "quality": "weak",
+        "behavior": "visible_lower",
+        "rejectReasons": ["stale"],
+        "reasons": ["Old issue can be visible only below fresher strong matches."]
+      }
+    },
+    {
+      "id": "core_overlay_jco_small_repo_should_survive",
+      "sourceTier": "overlay_trusted",
+      "issue": {
+        "repoFullName": "bytecodealliance/jco",
+        "number": 1596,
+        "title": "[preview2-shim] Runtime values are exported only as types",
+        "body": "In a TypeScript project using js-component-bindgen, preview2-shim runtime values such as streams are exported only as types. Expected behavior: runtime values are available at runtime and in generated declarations. Suggested fix: update generated type exports and add a regression test.",
+        "labels": ["bug", "good first issue", "generated-types"],
+        "createdAgeDays": 2,
+        "updatedAgeDays": 1
+      },
+      "repository": {
+        "description": "JavaScript tooling for WebAssembly components and TypeScript bindings",
+        "language": "Rust",
+        "stars": 952,
+        "forks": 120,
+        "watchers": 40,
+        "openIssues": 46,
+        "topics": ["rust", "typescript", "cli", "webassembly"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "This should be a pretty easy fix, but we should add a regression test.",
+          "authorAssociation": "COLLABORATOR",
+          "createdAgeDays": 1
+        }
+      ],
+      "expected": {
+        "quality": "excellent",
+        "behavior": "visible_top",
+        "minProfileFit": 80,
+        "reasons": ["Overlay trusted small repo with strong profile fit should not be buried by large weak-profile repos."]
+      }
+    },
+    {
+      "id": "core_old_ramalama_epic_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "containers/ramalama",
+        "number": 912,
+        "title": "EPIC: Support for vLLM",
+        "body": "Epic domain: extend local model execution support from LlamaCPP to vLLM. Scope includes CPU-only images for Mac and Windows, research and feasibility analysis for GPU support, and benchmark suite work. Subtasks include separate CPU image work, GPU research, and benchmark tooling.",
+        "labels": ["good first issue", "stale-issue"],
+        "createdAgeDays": 460,
+        "updatedAgeDays": 250
+      },
+      "repository": {
+        "description": "Developer tool for running AI models with containers",
+        "language": "Python",
+        "stars": 2872,
+        "forks": 341,
+        "watchers": 34,
+        "openIssues": 160,
+        "topics": ["ai", "containers", "llm", "podman", "vllm"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "weak",
+        "behavior": "hidden",
+        "rejectReasons": ["stale"],
+        "reasons": ["Old broad EPIC should not remain visible as a default-profile recommendation."]
+      }
+    }
+  ]
+}

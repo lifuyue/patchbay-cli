@@ -46,6 +46,41 @@ fn repeated_shown_feedback_lowers_next_feed_rank() {
 }
 
 #[test]
+fn first_shown_feedback_does_not_keep_rank_one() {
+    let mut ranked = vec![
+        ranked_issue(
+            "owner/shown-once",
+            RecommendationCategory::HighValueReady,
+            85,
+            1,
+        ),
+        ranked_issue(
+            "owner/unseen",
+            RecommendationCategory::HighValueReady,
+            82,
+            1,
+        ),
+    ];
+    let now = Utc::now().to_rfc3339();
+    let states = HashMap::from([(
+        IssueKey::new("owner/shown-once", 1),
+        RecommendationIssueState {
+            issue_key: IssueKey::new("owner/shown-once", 1),
+            shown_count: 1,
+            last_shown_at: Some(now.clone()),
+            last_feedback_at: Some(now),
+            ..RecommendationIssueState::default()
+        },
+    )]);
+
+    apply_recommendation_assessments(&mut ranked, &states);
+    sort_by_feed(&mut ranked);
+
+    assert_eq!(ranked[0].issue.repo_full_name, "owner/unseen");
+    assert!(ranked[1].recommendation.feedback_penalty >= 50);
+}
+
+#[test]
 fn read_feedback_penalizes_more_than_shown_feedback() {
     let mut shown = ranked_issue(
         "owner/shown",
@@ -81,6 +116,48 @@ fn read_feedback_penalizes_more_than_shown_feedback() {
     apply_recommendation_assessments(std::slice::from_mut(&mut read), &states);
 
     assert!(read.recommendation.feedback_penalty > shown.recommendation.feedback_penalty);
+}
+
+#[test]
+fn read_feedback_leaves_first_screen() {
+    let mut ranked = vec![ranked_issue(
+        "owner/read",
+        RecommendationCategory::HighValueReady,
+        100,
+        1,
+    )];
+    for index in 0..11 {
+        ranked.push(ranked_issue(
+            &format!("owner/fresh-{index}"),
+            RecommendationCategory::HighValueReady,
+            72,
+            1,
+        ));
+    }
+    let now = Utc::now().to_rfc3339();
+    let states = HashMap::from([(
+        IssueKey::new("owner/read", 1),
+        RecommendationIssueState {
+            issue_key: IssueKey::new("owner/read", 1),
+            read_count: 1,
+            last_read_at: Some(now.clone()),
+            last_feedback_at: Some(now),
+            ..RecommendationIssueState::default()
+        },
+    )]);
+
+    apply_recommendation_assessments(&mut ranked, &states);
+    sort_by_feed(&mut ranked);
+
+    let read_rank = ranked
+        .iter()
+        .position(|item| item.issue.repo_full_name == "owner/read")
+        .expect("read issue should remain present")
+        + 1;
+    assert!(
+        read_rank > 10,
+        "read issue should leave the first screen, got rank {read_rank}"
+    );
 }
 
 #[test]
@@ -332,8 +409,8 @@ fn profile_mismatch_caps_freshness_without_hiding_issue() {
         ranked.recommendation.visibility,
         RecommendationVisibility::Visible
     );
-    assert_eq!(ranked.recommendation.freshness_boost, 10);
-    assert!(ranked.recommendation.quality_penalty >= 70);
+    assert_eq!(ranked.recommendation.freshness_boost, 8);
+    assert!(ranked.recommendation.quality_penalty >= 180);
 }
 
 #[test]

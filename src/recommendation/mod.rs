@@ -1,5 +1,7 @@
 pub mod candidate_ranker;
+pub mod competition_completion;
 pub mod engine;
+pub mod eval;
 pub mod events;
 pub mod feed_ranker;
 pub mod feedback;

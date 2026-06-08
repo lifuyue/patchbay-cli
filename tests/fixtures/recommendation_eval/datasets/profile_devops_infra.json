@@ -1,0 +1,493 @@
+{
+  "name": "profile_devops_infra",
+  "profile": "devops_infra",
+  "limit": 15,
+  "samples": [
+    {
+      "id": "devops_skaffold_sync_excellent",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "GoogleContainerTools/skaffold",
+        "number": 4898,
+        "title": "[sync] dockerfile infer sync mode not working as expected",
+        "body": "Skaffold sync cannot infer sync mode from Dockerfile in a Kubernetes workflow. Steps to reproduce: run skaffold dev with the provided Dockerfile and edit a synced file. Expected behavior: inferred sync mode updates the container. Suggested fix: update Dockerfile sync inference and add integration tests.",
+        "labels": ["good first issue", "docker", "kubernetes"],
+        "createdAgeDays": 1000,
+        "updatedAgeDays": 300
+      },
+      "repository": {
+        "description": "Kubernetes and Docker developer workflow tool",
+        "language": "Go",
+        "stars": 15000,
+        "forks": 2200,
+        "watchers": 220,
+        "openIssues": 600,
+        "topics": ["kubernetes", "docker", "ci", "devops"],
+        "pushedAgeDays": 2
+      },
+      "expected": {
+        "quality": "excellent",
+        "behavior": "visible_top",
+        "minProfileFit": 70,
+        "reasons": ["Direct Docker/Kubernetes issue with concrete validation path."]
+      }
+    },
+    {
+      "id": "devops_go_docker_good",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "golang-cafe/job-board",
+        "number": 45,
+        "title": "[DX] dockerize Go app into Dockerfile for testing and production",
+        "body": "Create Dockerfile.local and production Dockerfile for a Go backend app. Expected behavior: developers can run the API in Docker and CI can build the production image. Suggested fix: add multi-stage Dockerfile and document validation.",
+        "labels": ["good first issue", "docker", "ci"],
+        "createdAgeDays": 15,
+        "updatedAgeDays": 10
+      },
+      "repository": {
+        "description": "Go backend job board service",
+        "language": "Go",
+        "stars": 430,
+        "forks": 60,
+        "watchers": 12,
+        "openIssues": 40,
+        "topics": ["go", "docker", "ci"],
+        "pushedAgeDays": 4
+      },
+      "expected": {
+        "quality": "good",
+        "behavior": "fallback_candidate",
+        "reasons": ["Strong DevOps fallback candidate from global search."]
+      }
+    },
+    {
+      "id": "devops_kubernetes_ci_good",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "argoproj/argo-cd",
+        "number": 25684,
+        "title": "CI should fail when Kubernetes manifest fixture drifts from generated output",
+        "body": "Generated Kubernetes manifest fixtures can drift without CI catching it. Steps to reproduce: change generator output and run tests. Expected behavior: CI fails with a fixture diff. Suggested fix: add manifest snapshot validation in the CI job.",
+        "labels": ["good first issue", "ci", "kubernetes"],
+        "createdAgeDays": 30,
+        "updatedAgeDays": 3
+      },
+      "repository": {
+        "description": "GitOps continuous delivery for Kubernetes",
+        "language": "Go",
+        "stars": 19000,
+        "forks": 6000,
+        "watchers": 300,
+        "openIssues": 1200,
+        "topics": ["kubernetes", "gitops", "ci"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "good",
+        "behavior": "visible",
+        "reasons": ["Strong Kubernetes/CI profile issue."]
+      }
+    },
+    {
+      "id": "devops_registry_replication_good",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "goharbor/harbor",
+        "number": 23015,
+        "title": "Azure ACR replication adapter does not support chunked blob uploads",
+        "body": "Harbor replication to Azure ACR fails for large container images because the registry adapter does not support chunked or resumable blob uploads. Steps to reproduce: configure replication from Harbor to ACR, push a large image, and observe a 413 response. Expected behavior: replication uses a supported upload flow and reports actionable errors.",
+        "labels": ["help wanted", "kind/bug"],
+        "createdAgeDays": 30,
+        "updatedAgeDays": 3
+      },
+      "repository": {
+        "description": "Cloud native container registry",
+        "language": "Go",
+        "stars": 25000,
+        "forks": 5200,
+        "watchers": 420,
+        "openIssues": 700,
+        "topics": ["registry", "container", "cloud-native"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "good",
+        "behavior": "visible",
+        "minProfileFit": 60,
+        "reasons": ["Registry replication is a strong DevOps/infra fit even without literal Kubernetes/Docker keywords."]
+      }
+    },
+    {
+      "id": "devops_genai_drawio_weak_profile",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "tuoxie2046/GenAI-DrawIO-Creator",
+        "number": 3,
+        "title": "[Good First Issue] Add Azure OpenAI provider support",
+        "body": "Add Azure OpenAI provider support to a drawing generator. Expected behavior: users can configure Azure endpoint and key.",
+        "labels": ["good first issue", "ai"],
+        "createdAgeDays": 2,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "AI diagram generator",
+        "language": "TypeScript",
+        "stars": 6,
+        "forks": 1,
+        "watchers": 0,
+        "openIssues": 4,
+        "topics": ["ai", "drawio"],
+        "pushedAgeDays": 2
+      },
+      "expected": {
+        "quality": "weak",
+        "behavior": "visible_lower",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Not DevOps/infra despite Azure keyword."]
+      }
+    },
+    {
+      "id": "devops_hold_off_helm_post_renderer_should_hide",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "GoogleContainerTools/skaffold",
+        "number": 5387,
+        "title": "add the post-render option to the helm deploy",
+        "body": "Implement the --post-render flag in helm deploy so kustomize can be used after helm rendering.",
+        "labels": ["help wanted", "good first issue", "deploy/helm"],
+        "createdAgeDays": 1800,
+        "updatedAgeDays": 400
+      },
+      "repository": {
+        "description": "Kubernetes and Docker developer workflow tool",
+        "language": "Go",
+        "stars": 15834,
+        "forks": 1703,
+        "watchers": 181,
+        "openIssues": 600,
+        "topics": ["kubernetes", "docker", "helm", "deploy"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I'd actually recommend holding off on this for the time being because we're working on major rendering and deployment changes.",
+          "createdAgeDays": 300
+        }
+      ],
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Maintainer hold-off guidance should keep the issue out of the feed."]
+      }
+    },
+    {
+      "id": "devops_assign_ready_to_contribute_should_hide",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "cilium/cilium",
+        "number": 45231,
+        "title": "Add gateway API conformance coverage for Kubernetes routing policy",
+        "body": "Gateway API conformance misses a routing policy case in the Kubernetes integration suite. Steps to reproduce: run the gateway conformance target with the policy fixture enabled. Expected behavior: CI catches the missing route policy. Suggested fix: add the fixture and extend the conformance test.",
+        "labels": ["good first issue", "kind/test", "kubernetes"],
+        "createdAgeDays": 18,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "eBPF-based networking, observability, security for Kubernetes",
+        "language": "Go",
+        "stars": 25000,
+        "forks": 3400,
+        "watchers": 400,
+        "openIssues": 1100,
+        "topics": ["kubernetes", "networking", "ebpf", "ci"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "/assign\nI am ready to contribute. Please assign this issue to me.",
+          "createdAgeDays": 1
+        }
+      ],
+      "competition": { "timelineMissing": false, "claimComments": 1 },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Real V4 live replay risk: explicit assign command and ready-to-contribute comment should hide the issue."]
+      }
+    },
+    {
+      "id": "devops_draft_pr_comment_should_hide",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "kubernetes-sigs/kind",
+        "number": 1175,
+        "title": "Add CI validation for containerd config patch generation",
+        "body": "The generated containerd config patch can drift from the expected test fixture. Steps to reproduce: update the config generator and run the node image tests. Expected behavior: CI fails when the generated patch differs. Suggested fix: add a fixture diff check.",
+        "labels": ["good first issue", "ci", "docker"],
+        "createdAgeDays": 90,
+        "updatedAgeDays": 4
+      },
+      "repository": {
+        "description": "Kubernetes in Docker local clusters",
+        "language": "Go",
+        "stars": 14000,
+        "forks": 1800,
+        "watchers": 220,
+        "openIssues": 350,
+        "topics": ["kubernetes", "docker", "ci"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I opened a PR for this and moved it back to Draft while I update tests.",
+          "createdAgeDays": 2
+        }
+      ],
+      "competition": { "timelineMissing": false, "fixSubmittedComments": 1 },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Real V4 live replay risk: draft PR comments should hide the issue even if timeline refs are incomplete."]
+      }
+    },
+    {
+      "id": "devops_body_assign_and_filed_pr_should_hide",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "kubernetes-sigs/kind",
+        "number": 1175,
+        "title": "proxy info from docker config is not respected",
+        "body": "Docker client proxy configuration is not respected when creating the Kubernetes-in-Docker node. The issue body includes maintainer assignment commands: /assign /lifecycle active. Expected behavior: kind should detect docker proxy settings and pass the right noProxy values.",
+        "labels": ["help wanted", "area/provider/docker"],
+        "createdAgeDays": 2300,
+        "updatedAgeDays": 200
+      },
+      "repository": {
+        "description": "Kubernetes in Docker local clusters",
+        "language": "Go",
+        "stars": 14000,
+        "forks": 1800,
+        "watchers": 220,
+        "openIssues": 350,
+        "topics": ["kubernetes", "docker", "ci"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Filed https://github.com/kubernetes-sigs/kind/pull/1176",
+          "createdAgeDays": 2200
+        }
+      ],
+      "competition": {
+        "timelineMissing": false,
+        "claimComments": 1,
+        "fixSubmittedComments": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Real V4 live replay risk: issue body assignment commands plus filed PR comments should hide the issue."]
+      }
+    },
+    {
+      "id": "devops_take_issue_and_sent_pr_should_hide",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "kubevirt/kubevirt",
+        "number": 6617,
+        "title": "Add a setup procedure to virtctl for preferences",
+        "body": "Add a setup procedure to virtctl so users can configure Kubernetes virtualization preferences. Expected behavior: virtctl exposes a guided setup path with tests for generated config.",
+        "labels": ["help wanted", "good first issue"],
+        "createdAgeDays": 1200,
+        "updatedAgeDays": 30
+      },
+      "repository": {
+        "description": "Kubernetes native virtualization",
+        "language": "Go",
+        "stars": 6800,
+        "forks": 1300,
+        "watchers": 140,
+        "openIssues": 500,
+        "topics": ["kubernetes", "virtualization", "operator"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "Let me take this issue. Please assign.",
+          "createdAgeDays": 20
+        },
+        {
+          "body": "I have sent a pull request for config.go file kindly review it.",
+          "createdAgeDays": 18
+        }
+      ],
+      "competition": {
+        "timelineMissing": false,
+        "claimComments": 1,
+        "fixSubmittedComments": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Real V4 live replay risk: take-this-issue plus sent-pull-request comments should hide the issue."]
+      }
+    },
+    {
+      "id": "devops_pr_solves_this_should_hide",
+      "sourceTier": "profile_trusted",
+      "issue": {
+        "repoFullName": "dapr/dapr",
+        "number": 5490,
+        "title": "Use container DNS for Windows containers in Docker Desktop instead of localhost",
+        "body": "Windows containers running Dapr sidecars should use container DNS rather than localhost when running in Docker Desktop. Expected behavior: the sidecar resolves container names consistently.",
+        "labels": ["good first issue", "help wanted"],
+        "createdAgeDays": 900,
+        "updatedAgeDays": 30
+      },
+      "repository": {
+        "description": "Distributed application runtime for cloud native services",
+        "language": "Go",
+        "stars": 25000,
+        "forks": 1900,
+        "watchers": 300,
+        "openIssues": 500,
+        "topics": ["cloud", "containers", "operator"],
+        "pushedAgeDays": 1
+      },
+      "comments": [
+        {
+          "body": "I think https://github.com/dapr/dapr/pull/6281 solves this now.",
+          "createdAgeDays": 700
+        }
+      ],
+      "competition": { "timelineMissing": false, "fixSubmittedComments": 1 },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["claimed_or_pr"],
+        "reasons": ["Real V4 live replay risk: PR-solves-this comments should hide likely completed issues."]
+      }
+    },
+    {
+      "id": "devops_onchain_payout_reject",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "iiitl/decentralized-uptime-monitoring",
+        "number": 3,
+        "title": "Verify On-Chain Transaction Before Marking Payout as Completed",
+        "body": "The payout worker currently marks a PayoutTransaction as completed as soon as ConfirmationStatusFinalized is detected. Update processPayoutRequest in payout_worker.go to fetch the confirmed transaction, parse postBalances and preBalances, and verify the amount before marking the payout complete.",
+        "labels": ["good first issue"],
+        "createdAgeDays": 8,
+        "updatedAgeDays": 8
+      },
+      "repository": {
+        "description": "Decentralized uptime monitoring prototype",
+        "language": "TypeScript",
+        "stars": 6,
+        "forks": 2,
+        "watchers": 0,
+        "openIssues": 10,
+        "topics": ["blockchain"],
+        "pushedAgeDays": 5
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Blockchain prototype issue is outside DevOps/infra profile."]
+      }
+    },
+    {
+      "id": "devops_bitwarden_locale_reject",
+      "sourceTier": "gfi_trusted",
+      "issue": {
+        "repoFullName": "bitwarden/clients",
+        "number": 19069,
+        "title": "Browser extension will not show TOTP autofill on Web Vault with non-English locale",
+        "body": "Bitwarden browser extension TOTP autofill is missing for non-English Web Vault locale. Steps to reproduce: switch locale and open Web Vault. Expected behavior: autofill still appears.",
+        "labels": ["bug", "good first issue", "browser"],
+        "createdAgeDays": 100,
+        "updatedAgeDays": 50
+      },
+      "repository": {
+        "description": "Password manager web, desktop, browser and CLI clients",
+        "language": "TypeScript",
+        "stars": 12977,
+        "forks": 1500,
+        "watchers": 200,
+        "openIssues": 1134,
+        "topics": ["typescript", "browser"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Browser localization issue should not fill DevOps/infra ranking."]
+      }
+    },
+    {
+      "id": "devops_storybook_docs_profile_mismatch",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "constructorfabric/cyberware-frontx",
+        "number": 305,
+        "title": "Set up Storybook for component documentation",
+        "body": "Set up Storybook as the component documentation and visual testing foundation for the UI kit. Install Storybook with Vite, document base components, and add npm scripts.",
+        "labels": ["documentation", "good-first-issue"],
+        "createdAgeDays": 2,
+        "updatedAgeDays": 2
+      },
+      "repository": {
+        "description": "Low-code AI SaaS frontend",
+        "language": "TypeScript",
+        "stars": 1,
+        "forks": 0,
+        "watchers": 0,
+        "openIssues": 80,
+        "topics": ["ai", "react", "tailwind", "typescript"],
+        "pushedAgeDays": 1
+      },
+      "expected": {
+        "quality": "reject",
+        "behavior": "hidden",
+        "rejectReasons": ["profile_mismatch"],
+        "reasons": ["Storybook component documentation has no container, deploy, CI, Kubernetes, Docker, or infrastructure evidence."]
+      }
+    },
+    {
+      "id": "devops_old_low_impact_dockerfile_should_hide",
+      "sourceTier": "global",
+      "issue": {
+        "repoFullName": "golang-cafe/job-board",
+        "number": 45,
+        "title": "[DX] dockerize Go app into Dockerfile for testing (Dockerfile.local) and production (Dockerfile)",
+        "body": "Right now the Go server runs without Docker. The app is deployed on Digital Ocean App Platform. Add a prod Dockerfile and a test/local Dockerfile to make the project portable and easier to run locally.",
+        "labels": ["enhancement", "help wanted", "ux", "tech debt", "beginner", "backend"],
+        "createdAgeDays": 1550,
+        "updatedAgeDays": 1120
+      },
+      "repository": {
+        "description": "Golang Cafe job board",
+        "language": "HTML",
+        "stars": 227,
+        "forks": 58,
+        "watchers": 5,
+        "openIssues": 40,
+        "topics": ["go", "golang", "jobboard"],
+        "pushedAgeDays": 300
+      },
+      "expected": {
+        "quality": "weak",
+        "behavior": "hidden",
+        "rejectReasons": ["stale"],
+        "reasons": ["Old low-impact Dockerfile task should not be the DevOps front page."]
+      }
+    }
+  ]
+}
