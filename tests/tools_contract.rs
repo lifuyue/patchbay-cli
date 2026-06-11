@@ -20,9 +20,8 @@ use issue_finder::prepare_gate::{
 use issue_finder::recommendation::{
     load_events, RecommendationEventSource, RecommendationEventType,
 };
-use issue_finder::tool_runtime::{
-    list_tool_specs, IssueFinderToolInvocation, IssueFinderToolRuntime,
-};
+use issue_finder::tool_runtime::{IssueFinderToolInvocation, IssueFinderToolRuntime};
+use issue_finder::tool_specs::list_tool_specs;
 use issue_finder::value_scoring::{
     is_daily_prepare_candidate, RecommendationCategory, ValueAssessment,
 };
@@ -38,6 +37,49 @@ fn tools_list_outputs_stable_issue_finder_specs() {
     let specs = serde_json::to_value(list_tool_specs()).unwrap();
     assert_eq!(specs["kind"], "issue_finder_tool_specs");
     assert_eq!(specs["version"], 1);
+    assert_eq!(
+        specs["quickStart"]["firstCall"]["defaultTool"],
+        "issue-finder.scout"
+    );
+    assert_eq!(
+        specs["quickStart"]["firstCall"]["defaultArguments"]["repo"],
+        "owner/repo"
+    );
+    assert_eq!(
+        specs["quickStart"]["firstCall"]["defaultArguments"]["limit"],
+        10
+    );
+    assert_eq!(
+        specs["quickStart"]["firstCall"]["whenReadyUnknown"],
+        "issue-finder.status"
+    );
+    assert_eq!(
+        specs["quickStart"]["firstCall"]["fallbackAfterSetupFailure"],
+        "issue-finder.status"
+    );
+    let workflow = specs["recommendedWorkflow"].as_array().unwrap();
+    let workflow_tools = workflow
+        .iter()
+        .map(|step| step["tool"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        workflow_tools,
+        vec![
+            "issue-finder.scout",
+            "issue-finder.assess",
+            "issue-finder.prepare",
+            "issue-finder.read_context"
+        ]
+    );
+    let read_context_step = workflow
+        .iter()
+        .find(|step| step["tool"] == "issue-finder.read_context")
+        .expect("read_context workflow step");
+    assert_eq!(read_context_step["deferred"], true);
+    assert_eq!(
+        read_context_step["firstSections"],
+        serde_json::json!(["entry", "safety", "probe"])
+    );
     let tools = specs["tools"].as_array().unwrap();
     let names = tools
         .iter()
@@ -75,6 +117,30 @@ fn tools_list_outputs_stable_issue_finder_specs() {
         .find(|tool| tool["name"] == "status")
         .expect("status tool spec");
     assert!(status["inputSchema"]["properties"]["checkAuth"].is_object());
+    let read_context = tools
+        .iter()
+        .find(|tool| tool["name"] == "read_context")
+        .expect("read_context tool spec");
+    assert_eq!(read_context["deferLoading"], true);
+}
+
+#[test]
+fn tools_list_cli_outputs_single_json_workflow_entry_object() {
+    let output = Command::new(env!("CARGO_BIN_EXE_issue-finder"))
+        .args(["tools", "list"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.lines().count(), 1);
+    let value = serde_json::from_str::<serde_json::Value>(stdout.trim()).unwrap();
+    assert_eq!(value["kind"], "issue_finder_tool_specs");
+    assert_eq!(
+        value["quickStart"]["firstCall"]["defaultTool"],
+        "issue-finder.scout"
+    );
+    assert!(value["recommendedWorkflow"].is_array());
+    assert!(value["tools"].is_array());
 }
 
 #[test]
@@ -681,9 +747,9 @@ fn start_mock_tool_github() -> MockToolGithub {
                     let mut buffer = [0u8; 4096];
                     let bytes_read = stream.read(&mut buffer).unwrap_or(0);
                     let request = String::from_utf8_lossy(&buffer[..bytes_read]);
-                    let body =
+                    let response =
                         response_body(&request, &base_url_for_thread, &search_count_for_thread);
-                    write_response(&mut stream, &body);
+                    write_response(&mut stream, response.status, &response.body);
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     thread::sleep(Duration::from_millis(10));
@@ -700,43 +766,71 @@ fn start_mock_tool_github() -> MockToolGithub {
     }
 }
 
-fn response_body(request: &str, base_url: &str, search_count: &AtomicUsize) -> String {
-    if request.starts_with("GET /user") {
-        return r#"{"login":"tool-user"}"#.to_string();
+struct MockResponse {
+    status: u16,
+    body: String,
+}
+
+fn response_body(request: &str, base_url: &str, search_count: &AtomicUsize) -> MockResponse {
+    let target = request_target(request);
+    if target == "/user" {
+        return ok_response(r#"{"login":"tool-user"}"#);
     }
 
-    if request.starts_with("GET /search/issues") {
+    if target.starts_with("/search/issues") {
         let count = search_count.fetch_add(1, Ordering::SeqCst);
-        return if count == 0 {
+        let body = if count == 0 {
             search_body(base_url)
         } else {
             r#"{"items":[]}"#.to_string()
         };
+        return ok_response(&body);
     }
 
     for repo in ["niche", "ready", "lowdepth"] {
         let prefix = format!("/repos/owner/{repo}");
-        if request.contains(&format!("{prefix}/issues/1/comments")) {
-            return comments_body();
+        if target.starts_with(&format!("{prefix}/issues/1/comments")) {
+            return ok_response(&comments_body());
         }
-        if request.contains(&format!("{prefix}/issues/1/timeline")) {
-            return "[]".to_string();
+        if target.starts_with(&format!("{prefix}/issues/1/timeline")) {
+            return ok_response("[]");
         }
-        if request.contains(&format!("{prefix}/stargazers")) {
-            return stargazers_body(repo);
+        if target.starts_with(&format!("{prefix}/stargazers")) {
+            return ok_response(&stargazers_body(repo));
         }
-        if request.contains(&format!("{prefix}/forks")) {
-            return forks_body(repo);
+        if target.starts_with(&format!("{prefix}/forks")) {
+            return ok_response(&forks_body(repo));
         }
-        if request.contains(&format!("{prefix}/issues/1")) {
-            return issue_body(repo);
+        if target.starts_with(&format!("{prefix}/issues/1")) {
+            return ok_response(&issue_body(repo));
         }
-        if request.contains(&prefix) {
-            return repo_body(repo);
+        if target == prefix {
+            return ok_response(&repo_body(repo));
         }
     }
 
-    r#"{"message":"not found"}"#.to_string()
+    MockResponse {
+        status: 404,
+        body: format!(
+            r#"{{"message":"mock route not found","target":{}}}"#,
+            serde_json::to_string(target).unwrap()
+        ),
+    }
+}
+
+fn request_target(request: &str) -> &str {
+    request
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap_or("")
+}
+
+fn ok_response(body: &str) -> MockResponse {
+    MockResponse {
+        status: 200,
+        body: body.to_string(),
+    }
 }
 
 fn search_body(base_url: &str) -> String {
@@ -900,9 +994,14 @@ fn json_string_literal(value: &str) -> String {
         .to_string()
 }
 
-fn write_response(stream: &mut std::net::TcpStream, body: &str) {
+fn write_response(stream: &mut std::net::TcpStream, status: u16, body: &str) {
+    let reason = match status {
+        200 => "OK",
+        404 => "Not Found",
+        _ => "Unknown",
+    };
     let response = format!(
-        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+        "HTTP/1.1 {status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
         body.len(),
         body
     );
