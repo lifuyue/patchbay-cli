@@ -645,7 +645,7 @@ fn read_context_schema() -> Value {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ScoutToolArgs {
     limit: Option<usize>,
     #[serde(default)]
@@ -659,7 +659,7 @@ struct ScoutToolArgs {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct AssessToolArgs {
     #[serde(default)]
     issue: Option<String>,
@@ -672,7 +672,7 @@ struct AssessToolArgs {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PrepareToolArgs {
     #[serde(default)]
     issue: Option<String>,

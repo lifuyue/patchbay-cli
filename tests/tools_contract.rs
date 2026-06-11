@@ -92,6 +92,33 @@ fn tools_call_invalid_arguments_emits_single_json_object() {
 }
 
 #[test]
+fn tools_call_rejects_removed_scout_min_category_argument() {
+    let output = Command::new(env!("CARGO_BIN_EXE_issue-finder"))
+        .args([
+            "tools",
+            "call",
+            "issue-finder.scout",
+            "--arguments",
+            r#"{"limit":1,"minCategory":"high_value_ready"}"#,
+            "--call-id",
+            "min_category_call",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.lines().count(), 1);
+    let value = serde_json::from_str::<serde_json::Value>(stdout.trim()).unwrap();
+    assert_eq!(value["call_id"], "min_category_call");
+    assert_eq!(value["success"], false);
+    assert_eq!(value["status"], "invalid_arguments");
+    assert!(value["structured_content"]["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("minCategory"));
+}
+
+#[test]
 fn daily_and_tool_prepare_gate_share_allowed_category_policy() {
     for category in [
         RecommendationCategory::HighValueReady,
