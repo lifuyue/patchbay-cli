@@ -64,7 +64,12 @@ fn tools_list_outputs_stable_issue_finder_specs() {
         .iter()
         .find(|tool| tool["name"] == "scout")
         .expect("scout tool spec");
-    assert!(scout["inputSchema"]["properties"]["repo"].is_object());
+    let scout_properties = scout["inputSchema"]["properties"].as_object().unwrap();
+    assert!(scout_properties["repo"].is_object());
+    assert!(
+        !scout_properties.contains_key("minCategory"),
+        "scout schema must not expose the removed minCategory noise parameter"
+    );
     let status = tools
         .iter()
         .find(|tool| tool["name"] == "status")
@@ -93,6 +98,33 @@ fn tools_call_invalid_arguments_emits_single_json_object() {
     assert_eq!(value["call_id"], "call_test");
     assert_eq!(value["success"], false);
     assert_eq!(value["status"], "invalid_arguments");
+}
+
+#[test]
+fn tools_call_rejects_removed_scout_min_category_argument() {
+    let output = Command::new(env!("CARGO_BIN_EXE_issue-finder"))
+        .args([
+            "tools",
+            "call",
+            "issue-finder.scout",
+            "--arguments",
+            r#"{"limit":1,"minCategory":"high_value_ready"}"#,
+            "--call-id",
+            "min_category_call",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.lines().count(), 1);
+    let value = serde_json::from_str::<serde_json::Value>(stdout.trim()).unwrap();
+    assert_eq!(value["call_id"], "min_category_call");
+    assert_eq!(value["success"], false);
+    assert_eq!(value["status"], "invalid_arguments");
+    assert!(value["structured_content"]["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("minCategory"));
 }
 
 #[test]
@@ -126,6 +158,31 @@ fn tools_call_status_reports_invalid_config_as_json() {
     assert_eq!(value["structured_content"]["config"]["exists"], true);
     assert_eq!(value["structured_content"]["config"]["loadOk"], false);
     assert!(value["structured_content"]["config"]["loadError"].is_string());
+    assert_eq!(
+        value["structured_content"]["nextFixCommand"],
+        "issue-finder init --force"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn tool_status_rejects_unknown_arguments() {
+    let dir = tempdir().unwrap();
+    let runtime = IssueFinderToolRuntime::new(test_paths(dir.path()), Config::default());
+
+    let status = runtime
+        .execute(invocation(
+            "issue-finder.status",
+            r#"{"checkAuth":false,"unexpected":true}"#,
+            "status_unknown_arg",
+        ))
+        .await;
+
+    assert!(!status.success);
+    assert_eq!(status.status, "invalid_arguments");
+    assert!(status.structured_content["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("unexpected"));
 }
 
 #[tokio::test(flavor = "current_thread")]

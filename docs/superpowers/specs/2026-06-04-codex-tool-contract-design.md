@@ -237,18 +237,22 @@ pub enum IssueFinderContentItem {
 ```json
 {
   "limit": 10,
+  "repo": null,
   "refresh": false,
   "includeFiltered": false,
-  "minCategory": null
+  "recordExposure": true
 }
 ```
 
 字段：
 
 - `limit`：返回候选数，默认 10。
+- `repo`：可选仓库范围，格式为 `owner/name`；未传入时使用全局发现。
 - `refresh`：是否忽略 GitHub discovery/enrichment cache。
 - `includeFiltered`：是否包含 `filtered_low_depth`。
-- `minCategory`：可选分类下限。v1 可先保留字段但不实现复杂过滤。
+- `recordExposure`：是否记录候选曝光事件，默认记录。
+
+`scout` 不提供 `minCategory` 这类分类下限参数。`RecommendationCategory` 是 gate 和解释分类，不是稳定线性等级；调用方应直接读取返回的 `category`、`gates` 和 `missingEvidence` 做决策。
 
 输出 `structured_content`：
 

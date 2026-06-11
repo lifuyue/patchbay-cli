@@ -338,7 +338,6 @@ impl IssueFinderToolRuntime {
     ) -> RuntimeResult<IssueFinderToolOutput> {
         let args: ScoutToolArgs = parse_arguments(&invocation.arguments)?;
         let limit = args.limit.unwrap_or(10).max(1);
-        let _reserved_min_category = args.min_category;
         let scope = scout_scope(args.repo)?;
         let result = workflow::scout_with_options(
             &self.paths,
@@ -664,16 +663,16 @@ fn next_fix_command(
     check_auth: bool,
     auth_ok: bool,
 ) -> Option<String> {
+    if !config_load_ok {
+        return Some("issue-finder init --force".to_string());
+    }
+
     if token_source == GitHubTokenSource::Missing || (check_auth && !auth_ok) {
         return Some(r#"export GITHUB_TOKEN="$(gh auth token)""#.to_string());
     }
 
     if !config_exists {
         return Some("issue-finder init".to_string());
-    }
-
-    if !config_load_ok {
-        return Some("issue-finder init --force".to_string());
     }
 
     None
@@ -764,8 +763,7 @@ fn scout_schema() -> Value {
             "repo": { "type": ["string", "null"], "default": null },
             "refresh": { "type": "boolean", "default": false },
             "includeFiltered": { "type": "boolean", "default": false },
-            "recordExposure": { "type": "boolean", "default": true },
-            "minCategory": { "type": ["string", "null"], "default": null }
+            "recordExposure": { "type": "boolean", "default": true }
         },
         "additionalProperties": false
     })
@@ -831,14 +829,14 @@ fn read_context_schema() -> Value {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StatusToolArgs {
     #[serde(default)]
     check_auth: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ScoutToolArgs {
     limit: Option<usize>,
     #[serde(default)]
@@ -849,12 +847,10 @@ struct ScoutToolArgs {
     include_filtered: bool,
     #[serde(default)]
     record_exposure: Option<bool>,
-    #[serde(default)]
-    min_category: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct AssessToolArgs {
     #[serde(default)]
     issue: Option<String>,
@@ -867,7 +863,7 @@ struct AssessToolArgs {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PrepareToolArgs {
     #[serde(default)]
     issue: Option<String>,
