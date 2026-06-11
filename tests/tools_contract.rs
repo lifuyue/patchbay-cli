@@ -60,7 +60,12 @@ fn tools_list_outputs_stable_issue_finder_specs() {
         .iter()
         .find(|tool| tool["name"] == "scout")
         .expect("scout tool spec");
-    assert!(scout["inputSchema"]["properties"]["repo"].is_object());
+    let scout_properties = scout["inputSchema"]["properties"].as_object().unwrap();
+    assert!(scout_properties["repo"].is_object());
+    assert!(
+        !scout_properties.contains_key("minCategory"),
+        "scout schema must not expose the removed minCategory noise parameter"
+    );
 }
 
 #[test]

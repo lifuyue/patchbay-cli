@@ -243,7 +243,6 @@ impl IssueFinderToolRuntime {
     ) -> RuntimeResult<IssueFinderToolOutput> {
         let args: ScoutToolArgs = parse_arguments(&invocation.arguments)?;
         let limit = args.limit.unwrap_or(10).max(1);
-        let _reserved_min_category = args.min_category;
         let scope = scout_scope(args.repo)?;
         let result = workflow::scout_with_options(
             &self.paths,
@@ -580,8 +579,7 @@ fn scout_schema() -> Value {
             "repo": { "type": ["string", "null"], "default": null },
             "refresh": { "type": "boolean", "default": false },
             "includeFiltered": { "type": "boolean", "default": false },
-            "recordExposure": { "type": "boolean", "default": true },
-            "minCategory": { "type": ["string", "null"], "default": null }
+            "recordExposure": { "type": "boolean", "default": true }
         },
         "additionalProperties": false
     })
@@ -658,8 +656,6 @@ struct ScoutToolArgs {
     include_filtered: bool,
     #[serde(default)]
     record_exposure: Option<bool>,
-    #[serde(default)]
-    min_category: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
