@@ -18,7 +18,7 @@ pub enum ReadContextError {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReadContextToolArgs {
     pub handoff_id: String,
     pub section: String,
